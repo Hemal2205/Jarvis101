@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import aiofiles
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import uuid
@@ -315,8 +316,9 @@ class MemoryVault:
         try:
             memories_file = os.path.join(self.memory_dir, "memories.json")
             if os.path.exists(memories_file):
-                with open(memories_file, 'r') as f:
-                    self.memories = json.load(f)
+                async with aiofiles.open(memories_file, 'r') as f:
+                    content = await f.read()
+                    self.memories = json.loads(content)
                 logger.info(f"Loaded {len(self.memories)} memories")
             else:
                 self.memories = {}
@@ -329,8 +331,9 @@ class MemoryVault:
         """Save memories to storage"""
         try:
             memories_file = os.path.join(self.memory_dir, "memories.json")
-            with open(memories_file, 'w') as f:
-                json.dump(self.memories, f, indent=2)
+            async with aiofiles.open(memories_file, 'w') as f:
+                content = json.dumps(self.memories, indent=2)
+                await f.write(content)
             logger.info("Memories saved")
         except Exception as e:
             logger.error(f"Failed to save memories: {e}")
@@ -340,8 +343,9 @@ class MemoryVault:
         try:
             journal_file = os.path.join(self.memory_dir, "emotional_journal.json")
             if os.path.exists(journal_file):
-                with open(journal_file, 'r') as f:
-                    self.emotional_journal = json.load(f)
+                async with aiofiles.open(journal_file, 'r') as f:
+                    content = await f.read()
+                    self.emotional_journal = json.loads(content)
                 logger.info(f"Loaded {len(self.emotional_journal)} journal entries")
             else:
                 self.emotional_journal = []
@@ -354,8 +358,9 @@ class MemoryVault:
         """Save emotional journal to storage"""
         try:
             journal_file = os.path.join(self.memory_dir, "emotional_journal.json")
-            with open(journal_file, 'w') as f:
-                json.dump(self.emotional_journal, f, indent=2)
+            async with aiofiles.open(journal_file, 'w') as f:
+                content = json.dumps(self.emotional_journal, indent=2)
+                await f.write(content)
             logger.info("Emotional journal saved")
         except Exception as e:
             logger.error(f"Failed to save emotional journal: {e}")

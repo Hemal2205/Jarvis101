@@ -1,0 +1,244 @@
+import asyncio
+import json
+import logging
+from typing import Dict, List, Any, Optional
+from datetime import datetime
+import aiohttp
+import os
+from .models import LLMModel, Command, Response
+
+logger = logging.getLogger(__name__)
+
+class MultiBrain:
+    """Multi-LLM brain system for J.A.R.V.I.S"""
+    
+    def __init__(self):
+        self.models = {}
+        self.command_history = []
+        self.learning_data = {}
+        self.active = False
+        
+    async def initialize(self):
+        """Initialize all LLM models"""
+        try:
+            # Initialize Nous Hermes for reasoning
+            self.models['reasoning'] = LLMModel(
+                name="nous-hermes",
+                role="reasoning",
+                model_path="nous-hermes-2-mixtral-8x7b-dpo",
+                capabilities=["reasoning", "planning", "analysis"]
+            )
+            
+            # Initialize Dolphin-Phi-2 for command parsing
+            self.models['command_parser'] = LLMModel(
+                name="dolphin-phi-2",
+                role="command_parser",
+                model_path="dolphin-2_6-phi-2",
+                capabilities=["command_parsing", "intent_recognition", "nlp"]
+            )
+            
+            # Initialize Qwen2.5 for code generation
+            self.models['code_gen'] = LLMModel(
+                name="qwen2.5-coder",
+                role="code_generator",
+                model_path="qwen2.5-coder-7b-instruct",
+                capabilities=["code_generation", "debugging", "refactoring"]
+            )
+            
+            # Load models
+            for model_name, model in self.models.items():
+                await model.load()
+                logger.info(f"Loaded {model_name} model")
+            
+            self.active = True
+            logger.info("Multi-brain system initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize brain: {e}")
+            raise
+    
+    async def process_command(self, command: str, user: str) -> Dict[str, Any]:
+        """Process a natural language command"""
+        try:
+            # Parse command with Dolphin-Phi-2
+            parsed_command = await self.models['command_parser'].process(
+                prompt=f"Parse this command and extract intent: {command}",
+                context={"user": user, "timestamp": datetime.now().isoformat()}
+            )
+            
+            # Reason about the command with Nous Hermes
+            reasoning_result = await self.models['reasoning'].process(
+                prompt=f"Analyze and plan response for: {command}",
+                context={
+                    "parsed_command": parsed_command,
+                    "user": user,
+                    "history": self.command_history[-5:]  # Last 5 commands
+                }
+            )
+            
+            # Generate code if needed with Qwen2.5
+            code_result = None
+            if 'code' in reasoning_result.get('requirements', []):
+                code_result = await self.models['code_gen'].process(
+                    prompt=f"Generate code for: {reasoning_result['plan']}",
+                    context={"language": "python", "framework": "fastapi"}
+                )
+            
+            # Combine results
+            response = self._combine_responses(
+                parsed_command, reasoning_result, code_result
+            )
+            
+            # Store command history
+            self.command_history.append({
+                "timestamp": datetime.now().isoformat(),
+                "user": user,
+                "command": command,
+                "response": response
+            })
+            
+            # Learn from interaction
+            await self._learn_from_interaction(command, response, user)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Command processing failed: {e}")
+            return {
+                "text": "I encountered an error processing your command. Please try again.",
+                "speak": True,
+                "action": None,
+                "error": str(e)
+            }
+    
+    def _combine_responses(self, parsed: Dict, reasoning: Dict, code: Optional[Dict]) -> Dict:
+        """Combine responses from multiple models"""
+        response = {
+            "text": reasoning.get("response", "I'm processing your request..."),
+            "speak": reasoning.get("should_speak", False),
+            "action": reasoning.get("action"),
+            "confidence": min(
+                parsed.get("confidence", 0.5),
+                reasoning.get("confidence", 0.5)
+            )
+        }
+        
+        if code:
+            response["code"] = code.get("generated_code")
+            response["explanation"] = code.get("explanation")
+        
+        return response
+    
+    async def _learn_from_interaction(self, command: str, response: Dict, user: str):
+        """Learn from user interactions"""
+        try:
+            # Store interaction data
+            interaction = {
+                "timestamp": datetime.now().isoformat(),
+                "user": user,
+                "command": command,
+                "response": response,
+                "success": response.get("error") is None
+            }
+            
+            # Update learning data
+            if user not in self.learning_data:
+                self.learning_data[user] = []
+            
+            self.learning_data[user].append(interaction)
+            
+            # Analyze patterns (simplified)
+            if len(self.learning_data[user]) > 10:
+                await self._analyze_patterns(user)
+                
+        except Exception as e:
+            logger.error(f"Learning failed: {e}")
+    
+    async def _analyze_patterns(self, user: str):
+        """Analyze user interaction patterns"""
+        try:
+            user_data = self.learning_data[user]
+            
+            # Simple pattern analysis
+            common_commands = {}
+            for interaction in user_data[-50:]:  # Last 50 interactions
+                cmd = interaction["command"].lower()
+                common_commands[cmd] = common_commands.get(cmd, 0) + 1
+            
+            # Store patterns for future use
+            self.learning_data[f"{user}_patterns"] = {
+                "common_commands": common_commands,
+                "last_analysis": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Pattern analysis failed: {e}")
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Get brain system status"""
+        return {
+            "active": self.active,
+            "models": {
+                name: {
+                    "loaded": model.is_loaded(),
+                    "role": model.role,
+                    "capabilities": model.capabilities
+                }
+                for name, model in self.models.items()
+            },
+            "command_history_size": len(self.command_history),
+            "learning_data_size": len(self.learning_data)
+        }
+    
+    async def shutdown(self):
+        """Shutdown brain system"""
+        try:
+            for model in self.models.values():
+                await model.unload()
+            
+            self.active = False
+            logger.info("Multi-brain system shut down")
+            
+        except Exception as e:
+            logger.error(f"Shutdown failed: {e}")
+    
+    async def evolve(self) -> Dict[str, Any]:
+        """Trigger autonomous evolution"""
+        try:
+            improvements = {
+                "model_optimizations": [],
+                "new_capabilities": [],
+                "performance_improvements": []
+            }
+            
+            # Analyze performance
+            for model_name, model in self.models.items():
+                performance = await model.analyze_performance()
+                if performance["needs_optimization"]:
+                    improvements["model_optimizations"].append({
+                        "model": model_name,
+                        "optimizations": performance["suggested_optimizations"]
+                    })
+            
+            # Identify new capabilities based on usage patterns
+            for user, patterns in self.learning_data.items():
+                if user.endswith("_patterns"):
+                    continue
+                    
+                # Analyze what users are asking for that we can't do well
+                common_failures = [
+                    interaction for interaction in patterns
+                    if not interaction["success"]
+                ]
+                
+                if common_failures:
+                    improvements["new_capabilities"].append({
+                        "user": user,
+                        "needed_capabilities": [failure["command"] for failure in common_failures[-5:]]
+                    })
+            
+            return improvements
+            
+        except Exception as e:
+            logger.error(f"Evolution failed: {e}")
+            return {"error": str(e)}

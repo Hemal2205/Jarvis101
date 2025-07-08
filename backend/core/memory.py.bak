@@ -1,0 +1,363 @@
+import asyncio
+import json
+import logging
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
+import aiofiles
+import os
+import uuid
+
+logger = logging.getLogger(__name__)
+
+class MemoryVault:
+    """Memory management system for J.A.R.V.I.S"""
+    
+    def __init__(self):
+        self.memories = {}
+        self.memory_index = {}
+        self.emotional_journal = []
+        self.data_dir = "data/memory"
+        
+    async def initialize(self):
+        """Initialize memory vault"""
+        try:
+            # Create data directory
+            os.makedirs(self.data_dir, exist_ok=True)
+            
+            # Load existing memories
+            await self._load_memories()
+            
+            # Load emotional journal
+            await self._load_emotional_journal()
+            
+            logger.info("Memory vault initialized")
+            
+        except Exception as e:
+            logger.error(f"Memory vault initialization failed: {e}")
+            raise
+    
+    async def _load_memories(self):
+        """Load memories from storage"""
+        try:
+            memories_file = os.path.join(self.data_dir, "memories.json")
+            if os.path.exists(memories_file):
+                async with aiofiles.open(memories_file, 'r') as f:
+                    content = await f.read()
+                    self.memories = json.loads(content)
+                    logger.info(f"Loaded {len(self.memories)} memories")
+            else:
+                self.memories = {}
+                logger.info("No existing memories found")
+                
+        except Exception as e:
+            logger.error(f"Failed to load memories: {e}")
+            self.memories = {}
+    
+    async def _save_memories(self):
+        """Save memories to storage"""
+        try:
+            memories_file = os.path.join(self.data_dir, "memories.json")
+            async with aiofiles.open(memories_file, 'w') as f:
+                await f.write(json.dumps(self.memories, indent=2))
+            logger.info("Memories saved")
+            
+        except Exception as e:
+            logger.error(f"Failed to save memories: {e}")
+    
+    async def _load_emotional_journal(self):
+        """Load emotional journal from storage"""
+        try:
+            journal_file = os.path.join(self.data_dir, "emotional_journal.json")
+            if os.path.exists(journal_file):
+                async with aiofiles.open(journal_file, 'r') as f:
+                    content = await f.read()
+                    self.emotional_journal = json.loads(content)
+                    logger.info(f"Loaded {len(self.emotional_journal)} journal entries")
+            else:
+                self.emotional_journal = []
+                logger.info("No existing journal entries found")
+                
+        except Exception as e:
+            logger.error(f"Failed to load emotional journal: {e}")
+            self.emotional_journal = []
+    
+    async def _save_emotional_journal(self):
+        """Save emotional journal to storage"""
+        try:
+            journal_file = os.path.join(self.data_dir, "emotional_journal.json")
+            async with aiofiles.open(journal_file, 'w') as f:
+                await f.write(json.dumps(self.emotional_journal, indent=2))
+            logger.info("Emotional journal saved")
+            
+        except Exception as e:
+            logger.error(f"Failed to save emotional journal: {e}")
+    
+    async def record_memory(self, content: str, memory_type: str, user: str) -> str:
+        """Record a new memory"""
+        try:
+            memory_id = str(uuid.uuid4())
+            
+            # Analyze emotion (simplified)
+            emotion = await self._analyze_emotion(content)
+            
+            memory = {
+                "id": memory_id,
+                "content": content,
+                "type": memory_type,
+                "user": user,
+                "timestamp": datetime.now().isoformat(),
+                "emotion": emotion,
+                "importance": await self._calculate_importance(content),
+                "tags": await self._extract_tags(content)
+            }
+            
+            # Store memory
+            self.memories[memory_id] = memory
+            
+            # Update index
+            await self._update_memory_index(memory)
+            
+            # Save to storage
+            await self._save_memories()
+            
+            # Add to J.A.R.V.I.S's emotional journal
+            await self._add_journal_entry(f"Hemal shared a memory: {content[:100]}...")
+            
+            logger.info(f"Memory recorded: {memory_id}")
+            return memory_id
+            
+        except Exception as e:
+            logger.error(f"Failed to record memory: {e}")
+            raise
+    
+    async def _analyze_emotion(self, content: str) -> str:
+        """Analyze emotion from memory content"""
+        # Simple emotion analysis based on keywords
+        content_lower = content.lower()
+        
+        if any(word in content_lower for word in ['happy', 'joy', 'excited', 'great', 'wonderful']):
+            return 'happy'
+        elif any(word in content_lower for word in ['sad', 'disappointed', 'upset', 'terrible']):
+            return 'sad'
+        elif any(word in content_lower for word in ['angry', 'frustrated', 'mad', 'annoyed']):
+            return 'angry'
+        elif any(word in content_lower for word in ['peaceful', 'calm', 'relaxed', 'serene']):
+            return 'peaceful'
+        elif any(word in content_lower for word in ['excited', 'thrilled', 'amazing', 'incredible']):
+            return 'excited'
+        else:
+            return 'neutral'
+    
+    async def _calculate_importance(self, content: str) -> float:
+        """Calculate importance score for memory"""
+        # Simple importance calculation
+        importance = 0.5
+        
+        # Longer content might be more important
+        if len(content) > 200:
+            importance += 0.2
+        
+        # Certain keywords increase importance
+        important_keywords = ['family', 'work', 'achievement', 'milestone', 'decision']
+        for keyword in important_keywords:
+            if keyword in content.lower():
+                importance += 0.1
+        
+        return min(importance, 1.0)
+    
+    async def _extract_tags(self, content: str) -> List[str]:
+        """Extract tags from memory content"""
+        # Simple tag extraction
+        tags = []
+        content_lower = content.lower()
+        
+        # Define tag keywords
+        tag_keywords = {
+            'work': ['work', 'job', 'career', 'project', 'meeting'],
+            'family': ['family', 'mom', 'dad', 'sister', 'brother'],
+            'friends': ['friend', 'buddy', 'pal'],
+            'achievement': ['achievement', 'success', 'accomplished', 'goal'],
+            'learning': ['learned', 'study', 'course', 'education'],
+            'travel': ['travel', 'trip', 'vacation', 'visit'],
+            'health': ['health', 'exercise', 'workout', 'medical'],
+            'hobby': ['hobby', 'interest', 'passion']
+        }
+        
+        for tag, keywords in tag_keywords.items():
+            if any(keyword in content_lower for keyword in keywords):
+                tags.append(tag)
+        
+        return tags
+    
+    async def _update_memory_index(self, memory: Dict[str, Any]):
+        """Update memory search index"""
+        try:
+            user = memory['user']
+            if user not in self.memory_index:
+                self.memory_index[user] = {
+                    'by_date': {},
+                    'by_emotion': {},
+                    'by_tags': {},
+                    'by_importance': {}
+                }
+            
+            # Index by date
+            date_key = memory['timestamp'][:10]  # YYYY-MM-DD
+            if date_key not in self.memory_index[user]['by_date']:
+                self.memory_index[user]['by_date'][date_key] = []
+            self.memory_index[user]['by_date'][date_key].append(memory['id'])
+            
+            # Index by emotion
+            emotion = memory['emotion']
+            if emotion not in self.memory_index[user]['by_emotion']:
+                self.memory_index[user]['by_emotion'][emotion] = []
+            self.memory_index[user]['by_emotion'][emotion].append(memory['id'])
+            
+            # Index by tags
+            for tag in memory['tags']:
+                if tag not in self.memory_index[user]['by_tags']:
+                    self.memory_index[user]['by_tags'][tag] = []
+                self.memory_index[user]['by_tags'][tag].append(memory['id'])
+            
+        except Exception as e:
+            logger.error(f"Failed to update memory index: {e}")
+    
+    async def get_memory(self, memory_id: str) -> Optional[Dict[str, Any]]:
+        """Get a specific memory"""
+        try:
+            return self.memories.get(memory_id)
+        except Exception as e:
+            logger.error(f"Failed to get memory {memory_id}: {e}")
+            return None
+    
+    async def get_all_memories(self, user: str) -> List[Dict[str, Any]]:
+        """Get all memories for a user"""
+        try:
+            user_memories = []
+            for memory in self.memories.values():
+                if memory['user'] == user:
+                    user_memories.append(memory)
+            
+            # Sort by timestamp, newest first
+            user_memories.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+            return user_memories
+            
+        except Exception as e:
+            logger.error(f"Failed to get memories for user {user}: {e}")
+            return []
+    
+    async def search_memories(self, user: str, query: str) -> List[Dict[str, Any]]:
+        """Search memories by content"""
+        try:
+            matching_memories = []
+            query_lower = query.lower()
+            
+            for memory in self.memories.values():
+                if memory['user'] == user:
+                    if (query_lower in memory['content'].lower() or 
+                        query_lower in memory.get('tags', []) or
+                        query_lower == memory.get('emotion', '')):
+                        matching_memories.append(memory)
+            
+            # Sort by importance and recency
+            matching_memories.sort(
+                key=lambda x: (x['importance'], x['timestamp']), 
+                reverse=True
+            )
+            
+            return matching_memories
+            
+        except Exception as e:
+            logger.error(f"Failed to search memories: {e}")
+            return []
+    
+    async def get_memories_by_date(self, user: str, date: str) -> List[Dict[str, Any]]:
+        """Get memories for a specific date"""
+        try:
+            if user in self.memory_index and date in self.memory_index[user]['by_date']:
+                memory_ids = self.memory_index[user]['by_date'][date]
+                return [self.memories[mid] for mid in memory_ids if mid in self.memories]
+            return []
+            
+        except Exception as e:
+            logger.error(f"Failed to get memories by date: {e}")
+            return []
+    
+    async def get_memories_by_emotion(self, user: str, emotion: str) -> List[Dict[str, Any]]:
+        """Get memories by emotion"""
+        try:
+            if user in self.memory_index and emotion in self.memory_index[user]['by_emotion']:
+                memory_ids = self.memory_index[user]['by_emotion'][emotion]
+                return [self.memories[mid] for mid in memory_ids if mid in self.memories]
+            return []
+            
+        except Exception as e:
+            logger.error(f"Failed to get memories by emotion: {e}")
+            return []
+    
+    async def _add_journal_entry(self, entry: str):
+        """Add entry to J.A.R.V.I.S's emotional journal"""
+        try:
+            journal_entry = {
+                "id": str(uuid.uuid4()),
+                "entry": entry,
+                "timestamp": datetime.now().isoformat(),
+                "emotion": await self._analyze_emotion(entry)
+            }
+            
+            self.emotional_journal.append(journal_entry)
+            
+            # Keep only last 1000 entries
+            if len(self.emotional_journal) > 1000:
+                self.emotional_journal = self.emotional_journal[-1000:]
+            
+            await self._save_emotional_journal()
+            
+        except Exception as e:
+            logger.error(f"Failed to add journal entry: {e}")
+    
+    async def get_journal_entries(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get recent journal entries"""
+        try:
+            return self.emotional_journal[-limit:]
+        except Exception as e:
+            logger.error(f"Failed to get journal entries: {e}")
+            return []
+    
+    async def wipe_memories(self):
+        """Wipe all memories (kill switch)"""
+        try:
+            self.memories.clear()
+            self.memory_index.clear()
+            self.emotional_journal.clear()
+            
+            await self._save_memories()
+            await self._save_emotional_journal()
+            
+            logger.critical("All memories wiped")
+            
+        except Exception as e:
+            logger.error(f"Failed to wipe memories: {e}")
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Get memory vault status"""
+        return {
+            "total_memories": len(self.memories),
+            "journal_entries": len(self.emotional_journal),
+            "users_with_memories": len(set(m['user'] for m in self.memories.values())),
+            "memory_types": list(set(m['type'] for m in self.memories.values())),
+            "emotions": list(set(m['emotion'] for m in self.memories.values()))
+        }
+    
+    async def shutdown(self):
+        """Shutdown memory vault"""
+        try:
+            # Save current state
+            await self._save_memories()
+            await self._save_emotional_journal()
+            
+            logger.info("Memory vault shut down")
+            
+        except Exception as e:
+            logger.error(f"Memory vault shutdown failed: {e}")

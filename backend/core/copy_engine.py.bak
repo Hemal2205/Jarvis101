@@ -1,0 +1,473 @@
+import asyncio
+import json
+import logging
+import os
+import shutil
+import zipfile
+from typing import Dict, List, Any, Optional
+from datetime import datetime
+import aiofiles
+import uuid
+
+logger = logging.getLogger(__name__)
+
+class CopyEngine:
+    """Copy engine for creating J.A.R.V.I.S copies"""
+    
+    def __init__(self):
+        self.copies = {}
+        self.copy_templates = {}
+        self.master_key = None
+        self.data_dir = "data/copies"
+        self.template_dir = "templates"
+        self.output_dir = "output"
+        
+    async def initialize(self):
+        """Initialize copy engine"""
+        try:
+            # Create directories
+            os.makedirs(self.data_dir, exist_ok=True)
+            os.makedirs(self.template_dir, exist_ok=True)
+            os.makedirs(self.output_dir, exist_ok=True)
+            
+            # Load existing copies
+            await self._load_copies()
+            
+            # Generate master key
+            self.master_key = self._generate_master_key()
+            
+            # Create copy templates
+            await self._create_copy_templates()
+            
+            logger.info("Copy engine initialized")
+            
+        except Exception as e:
+            logger.error(f"Copy engine initialization failed: {e}")
+            raise
+    
+    async def _load_copies(self):
+        """Load existing copies from storage"""
+        try:
+            copies_file = os.path.join(self.data_dir, "copies.json")
+            if os.path.exists(copies_file):
+                async with aiofiles.open(copies_file, 'r') as f:
+                    content = await f.read()
+                    self.copies = json.loads(content)
+                    logger.info(f"Loaded {len(self.copies)} copies")
+            else:
+                self.copies = {}
+                logger.info("No existing copies found")
+                
+        except Exception as e:
+            logger.error(f"Failed to load copies: {e}")
+            self.copies = {}
+    
+    async def _save_copies(self):
+        """Save copies to storage"""
+        try:
+            copies_file = os.path.join(self.data_dir, "copies.json")
+            async with aiofiles.open(copies_file, 'w') as f:
+                await f.write(json.dumps(self.copies, indent=2))
+            logger.info("Copies saved")
+            
+        except Exception as e:
+            logger.error(f"Failed to save copies: {e}")
+    
+    def _generate_master_key(self) -> str:
+        """Generate master key for copy control"""
+        import secrets
+        return secrets.token_hex(32)
+    
+    async def _create_copy_templates(self):
+        """Create copy templates"""
+        try:
+            # Base template structure
+            base_template = {
+                "name": "J.A.R.V.I.S_Copy",
+                "version": "1.0.0",
+                "capabilities": [
+                    "natural_language_processing",
+                    "task_automation",
+                    "learning_adaptation"
+                ],
+                "restrictions": [
+                    "no_self_replication",
+                    "no_personal_data_access",
+                    "no_biometric_access",
+                    "no_memory_vault_access"
+                ],
+                "master_control": True,
+                "update_channel": "master"
+            }
+            
+            self.copy_templates["base"] = base_template
+            
+            # Create template files
+            await self._create_template_files()
+            
+            logger.info("Copy templates created")
+            
+        except Exception as e:
+            logger.error(f"Failed to create copy templates: {e}")
+    
+    async def _create_template_files(self):
+        """Create template files for copies"""
+        try:
+            # Create frontend template
+            frontend_template = """import React from 'react';
+import { JarvisSystem } from './components/JarvisSystem';
+import { JarvisProvider } from './context/JarvisContext';
+
+// This is a J.A.R.V.I.S copy - personal data has been removed
+// Copy ID: {copy_id}
+// Created: {created_date}
+// Owner: {owner}
+
+function App() {
+  return (
+    <JarvisProvider>
+      <div className="min-h-screen bg-black overflow-hidden">
+        <JarvisSystem />
+      </div>
+    </JarvisProvider>
+  );
+}
+
+export default App;"""
+            
+            # Create backend template
+            backend_template = """import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+# J.A.R.V.I.S Copy - Restricted Version
+# Copy ID: {copy_id}
+# Created: {created_date}
+# Owner: {owner}
+# Master: {master_key}
+
+app = FastAPI(
+    title="J.A.R.V.I.S Copy",
+    description="Restricted J.A.R.V.I.S Copy",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    return {{
+        "message": "J.A.R.V.I.S Copy Online",
+        "copy_id": "{copy_id}",
+        "restrictions": [
+            "No personal data access",
+            "No biometric authentication",
+            "No memory vault",
+            "No self-replication"
+        ]
+    }}
+
+# Limited functionality for copies
+@app.post("/api/command")
+async def process_command(command: str):
+    # Limited command processing
+    return {{
+        "response": "I'm a J.A.R.V.I.S copy with limited capabilities.",
+        "restrictions": "Some features are not available in copies."
+    }}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)"""
+            
+            # Save templates
+            frontend_file = os.path.join(self.template_dir, "frontend_template.py")
+            backend_file = os.path.join(self.template_dir, "backend_template.py")
+            
+            async with aiofiles.open(frontend_file, 'w') as f:
+                await f.write(frontend_template)
+            
+            async with aiofiles.open(backend_file, 'w') as f:
+                await f.write(backend_template)
+            
+            logger.info("Template files created")
+            
+        except Exception as e:
+            logger.error(f"Failed to create template files: {e}")
+    
+    async def create_copy(self, name: str, creator: str) -> str:
+        """Create a new J.A.R.V.I.S copy"""
+        try:
+            copy_id = str(uuid.uuid4())
+            created_date = datetime.now().isoformat()
+            
+            # Create copy metadata
+            copy_metadata = {
+                "id": copy_id,
+                "name": name,
+                "creator": creator,
+                "created": created_date,
+                "status": "active",
+                "version": "1.0.0",
+                "master_key": self.master_key,
+                "restrictions": self.copy_templates["base"]["restrictions"],
+                "capabilities": self.copy_templates["base"]["capabilities"],
+                "last_update": created_date,
+                "update_count": 0
+            }
+            
+            # Store copy metadata
+            self.copies[copy_id] = copy_metadata
+            
+            # Create copy files
+            await self._build_copy_package(copy_id, name, creator, created_date)
+            
+            # Save copies
+            await self._save_copies()
+            
+            logger.info(f"Copy created: {copy_id} for {creator}")
+            return copy_id
+            
+        except Exception as e:
+            logger.error(f"Failed to create copy: {e}")
+            raise
+    
+    async def _build_copy_package(self, copy_id: str, name: str, creator: str, created_date: str):
+        """Build copy package"""
+        try:
+            copy_dir = os.path.join(self.output_dir, copy_id)
+            os.makedirs(copy_dir, exist_ok=True)
+            
+            # Create copy structure
+            frontend_dir = os.path.join(copy_dir, "frontend")
+            backend_dir = os.path.join(copy_dir, "backend")
+            
+            os.makedirs(frontend_dir, exist_ok=True)
+            os.makedirs(backend_dir, exist_ok=True)
+            
+            # Copy base files (without personal data)
+            await self._copy_base_files(frontend_dir, backend_dir)
+            
+            # Generate customized files
+            await self._generate_copy_files(
+                copy_id, name, creator, created_date, frontend_dir, backend_dir
+            )
+            
+            # Create installer
+            await self._create_installer(copy_id, copy_dir)
+            
+            logger.info(f"Copy package built: {copy_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to build copy package: {e}")
+            raise
+    
+    async def _copy_base_files(self, frontend_dir: str, backend_dir: str):
+        """Copy base files to copy directory"""
+        try:
+            # Copy frontend files (excluding personal data)
+            src_frontend = "src"
+            if os.path.exists(src_frontend):
+                # Copy components (filtered)
+                components_src = os.path.join(src_frontend, "components")
+                components_dst = os.path.join(frontend_dir, "components")
+                
+                if os.path.exists(components_src):
+                    shutil.copytree(components_src, components_dst, ignore=shutil.ignore_patterns(
+                        "*Memory*", "*Copy*", "*Authentication*"
+                    ))
+            
+            # Copy backend files (filtered)
+            backend_src = "backend"
+            if os.path.exists(backend_src):
+                # Copy core modules (filtered)
+                core_files = ["brain.py", "models.py"]
+                core_dst = os.path.join(backend_dir, "core")
+                os.makedirs(core_dst, exist_ok=True)
+                
+                for core_file in core_files:
+                    src_file = os.path.join(backend_src, "core", core_file)
+                    dst_file = os.path.join(core_dst, core_file)
+                    if os.path.exists(src_file):
+                        shutil.copy2(src_file, dst_file)
+            
+            logger.info("Base files copied")
+            
+        except Exception as e:
+            logger.error(f"Failed to copy base files: {e}")
+    
+    async def _generate_copy_files(self, copy_id: str, name: str, creator: str, 
+                                 created_date: str, frontend_dir: str, backend_dir: str):
+        """Generate customized copy files"""
+        try:
+            # Read templates
+            frontend_template_file = os.path.join(self.template_dir, "frontend_template.py")
+            backend_template_file = os.path.join(self.template_dir, "backend_template.py")
+            
+            # Generate frontend
+            if os.path.exists(frontend_template_file):
+                async with aiofiles.open(frontend_template_file, 'r') as f:
+                    frontend_content = await f.read()
+                
+                frontend_content = frontend_content.format(
+                    copy_id=copy_id,
+                    created_date=created_date,
+                    owner=creator
+                )
+                
+                frontend_output = os.path.join(frontend_dir, "App.tsx")
+                async with aiofiles.open(frontend_output, 'w') as f:
+                    await f.write(frontend_content)
+            
+            # Generate backend
+            if os.path.exists(backend_template_file):
+                async with aiofiles.open(backend_template_file, 'r') as f:
+                    backend_content = await f.read()
+                
+                backend_content = backend_content.format(
+                    copy_id=copy_id,
+                    created_date=created_date,
+                    owner=creator,
+                    master_key=self.master_key
+                )
+                
+                backend_output = os.path.join(backend_dir, "main.py")
+                async with aiofiles.open(backend_output, 'w') as f:
+                    await f.write(backend_content)
+            
+            # Create package.json
+            package_json = {
+                "name": f"jarvis-copy-{name.lower().replace(' ', '-')}",
+                "version": "1.0.0",
+                "description": f"J.A.R.V.I.S Copy - {name}",
+                "main": "main.py",
+                "scripts": {
+                    "dev": "vite",
+                    "build": "vite build",
+                    "serve": "uvicorn main:app --reload"
+                },
+                "jarvis_copy": {
+                    "id": copy_id,
+                    "creator": creator,
+                    "created": created_date,
+                    "master_key": self.master_key
+                }
+            }
+            
+            package_file = os.path.join(frontend_dir, "package.json")
+            async with aiofiles.open(package_file, 'w') as f:
+                await f.write(json.dumps(package_json, indent=2))
+            
+            logger.info(f"Copy files generated for {copy_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to generate copy files: {e}")
+    
+    async def _create_installer(self, copy_id: str, copy_dir: str):
+        """Create installer package"""
+        try:
+            installer_path = os.path.join(self.output_dir, f"{copy_id}.jarvis")
+            
+            # Create zip file
+            with zipfile.ZipFile(installer_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(copy_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, copy_dir)
+                        zipf.write(file_path, arcname)
+            
+            logger.info(f"Installer created: {installer_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to create installer: {e}")
+    
+    async def get_copy_installer(self, copy_id: str) -> str:
+        """Get copy installer path"""
+        try:
+            installer_path = os.path.join(self.output_dir, f"{copy_id}.jarvis")
+            if os.path.exists(installer_path):
+                return installer_path
+            else:
+                raise FileNotFoundError(f"Installer not found for copy {copy_id}")
+                
+        except Exception as e:
+            logger.error(f"Failed to get copy installer: {e}")
+            raise
+    
+    async def update_copy(self, copy_id: str) -> bool:
+        """Update a copy with latest improvements"""
+        try:
+            if copy_id not in self.copies:
+                raise ValueError(f"Copy {copy_id} not found")
+            
+            copy_metadata = self.copies[copy_id]
+            
+            # Update copy
+            copy_metadata["last_update"] = datetime.now().isoformat()
+            copy_metadata["update_count"] += 1
+            
+            # Rebuild copy package
+            await self._build_copy_package(
+                copy_id,
+                copy_metadata["name"],
+                copy_metadata["creator"],
+                copy_metadata["created"]
+            )
+            
+            await self._save_copies()
+            
+            logger.info(f"Copy updated: {copy_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update copy: {e}")
+            return False
+    
+    async def disable_copy(self, copy_id: str) -> bool:
+        """Disable a copy"""
+        try:
+            if copy_id not in self.copies:
+                raise ValueError(f"Copy {copy_id} not found")
+            
+            self.copies[copy_id]["status"] = "disabled"
+            await self._save_copies()
+            
+            logger.info(f"Copy disabled: {copy_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to disable copy: {e}")
+            return False
+    
+    async def get_all_copies(self) -> List[Dict[str, Any]]:
+        """Get all copies"""
+        try:
+            return list(self.copies.values())
+        except Exception as e:
+            logger.error(f"Failed to get copies: {e}")
+            return []
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Get copy engine status"""
+        return {
+            "total_copies": len(self.copies),
+            "active_copies": len([c for c in self.copies.values() if c["status"] == "active"]),
+            "disabled_copies": len([c for c in self.copies.values() if c["status"] == "disabled"]),
+            "master_key_set": self.master_key is not None
+        }
+    
+    async def shutdown(self):
+        """Shutdown copy engine"""
+        try:
+            # Save current state
+            await self._save_copies()
+            
+            logger.info("Copy engine shut down")
+            
+        except Exception as e:
+            logger.error(f"Copy engine shutdown failed: {e}")

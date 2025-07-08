@@ -1,0 +1,451 @@
+import asyncio
+import json
+import logging
+from typing import Dict, List, Any, Optional
+from datetime import datetime
+import aiofiles
+import os
+
+logger = logging.getLogger(__name__)
+
+class StealthManager:
+    """Stealth mode management for J.A.R.V.I.S"""
+    
+    def __init__(self):
+        self.current_mode = "full"
+        self.stealth_sessions = {}
+        self.interview_transcripts = []
+        self.exam_assistance_logs = []
+        self.data_dir = "data/stealth"
+        
+    async def initialize(self):
+        """Initialize stealth manager"""
+        try:
+            # Create data directory
+            os.makedirs(self.data_dir, exist_ok=True)
+            
+            # Load stealth data
+            await self._load_stealth_data()
+            
+            logger.info("Stealth manager initialized")
+            
+        except Exception as e:
+            logger.error(f"Stealth manager initialization failed: {e}")
+            raise
+    
+    async def _load_stealth_data(self):
+        """Load stealth data from storage"""
+        try:
+            stealth_file = os.path.join(self.data_dir, "stealth_data.json")
+            if os.path.exists(stealth_file):
+                async with aiofiles.open(stealth_file, 'r') as f:
+                    content = await f.read()
+                    data = json.loads(content)
+                    self.stealth_sessions = data.get("sessions", {})
+                    self.interview_transcripts = data.get("interviews", [])
+                    self.exam_assistance_logs = data.get("exams", [])
+                    logger.info("Stealth data loaded")
+            else:
+                logger.info("No existing stealth data found")
+                
+        except Exception as e:
+            logger.error(f"Failed to load stealth data: {e}")
+    
+    async def _save_stealth_data(self):
+        """Save stealth data to storage"""
+        try:
+            stealth_file = os.path.join(self.data_dir, "stealth_data.json")
+            data = {
+                "sessions": self.stealth_sessions,
+                "interviews": self.interview_transcripts,
+                "exams": self.exam_assistance_logs
+            }
+            async with aiofiles.open(stealth_file, 'w') as f:
+                await f.write(json.dumps(data, indent=2))
+            logger.info("Stealth data saved")
+            
+        except Exception as e:
+            logger.error(f"Failed to save stealth data: {e}")
+    
+    async def set_mode(self, mode: str):
+        """Set stealth mode"""
+        try:
+            valid_modes = ["full", "stealth-interview", "stealth-exam", "passive-copilot"]
+            if mode not in valid_modes:
+                raise ValueError(f"Invalid mode: {mode}")
+            
+            old_mode = self.current_mode
+            self.current_mode = mode
+            
+            # Log mode change
+            await self._log_mode_change(old_mode, mode)
+            
+            # Initialize mode-specific features
+            if mode == "stealth-interview":
+                await self._initialize_interview_mode()
+            elif mode == "stealth-exam":
+                await self._initialize_exam_mode()
+            elif mode == "passive-copilot":
+                await self._initialize_copilot_mode()
+            
+            logger.info(f"Stealth mode changed: {old_mode} -> {mode}")
+            
+        except Exception as e:
+            logger.error(f"Failed to set mode: {e}")
+            raise
+    
+    async def _log_mode_change(self, old_mode: str, new_mode: str):
+        """Log mode change"""
+        try:
+            session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            self.stealth_sessions[session_id] = {
+                "start_time": datetime.now().isoformat(),
+                "old_mode": old_mode,
+                "new_mode": new_mode,
+                "user": "Hemal",
+                "active": True
+            }
+            
+            await self._save_stealth_data()
+            
+        except Exception as e:
+            logger.error(f"Failed to log mode change: {e}")
+    
+    async def _initialize_interview_mode(self):
+        """Initialize interview assistance mode"""
+        try:
+            # Start voice recognition
+            await self._start_voice_recognition()
+            
+            # Initialize response database
+            await self._load_interview_responses()
+            
+            # Start real-time transcript processing
+            await self._start_transcript_processing()
+            
+            logger.info("Interview mode initialized")
+            
+        except Exception as e:
+            logger.error(f"Interview mode initialization failed: {e}")
+    
+    async def _initialize_exam_mode(self):
+        """Initialize exam assistance mode"""
+        try:
+            # Initialize stealth overlay
+            await self._initialize_stealth_overlay()
+            
+            # Load knowledge base
+            await self._load_knowledge_base()
+            
+            # Initialize screen analysis
+            await self._initialize_screen_analysis()
+            
+            logger.info("Exam mode initialized")
+            
+        except Exception as e:
+            logger.error(f"Exam mode initialization failed: {e}")
+    
+    async def _initialize_copilot_mode(self):
+        """Initialize passive copilot mode"""
+        try:
+            # Start background monitoring
+            await self._start_background_monitoring()
+            
+            # Initialize draft generation
+            await self._initialize_draft_generation()
+            
+            logger.info("Copilot mode initialized")
+            
+        except Exception as e:
+            logger.error(f"Copilot mode initialization failed: {e}")
+    
+    async def _start_voice_recognition(self):
+        """Start voice recognition for interviews"""
+        try:
+            # Mock voice recognition initialization
+            logger.info("Voice recognition started")
+            
+            # In a real implementation, this would:
+            # 1. Initialize microphone
+            # 2. Start speech-to-text
+            # 3. Process audio in real-time
+            # 4. Generate transcripts
+            
+        except Exception as e:
+            logger.error(f"Voice recognition failed: {e}")
+    
+    async def _load_interview_responses(self):
+        """Load interview response database"""
+        try:
+            # Mock response database
+            responses = {
+                "experience": [
+                    "I have extensive experience in full-stack development...",
+                    "My background includes working with React, Node.js, and Python...",
+                    "I've led several successful projects in my previous roles..."
+                ],
+                "challenges": [
+                    "One significant challenge I faced was optimizing system performance...",
+                    "I encountered a complex integration issue that required creative problem-solving...",
+                    "Managing a tight deadline while ensuring code quality was challenging..."
+                ],
+                "teamwork": [
+                    "I believe effective communication is key to successful teamwork...",
+                    "I've mentored junior developers and collaborated with cross-functional teams...",
+                    "My approach to conflict resolution involves active listening and finding common ground..."
+                ]
+            }
+            
+            # Save responses for interview mode
+            responses_file = os.path.join(self.data_dir, "interview_responses.json")
+            async with aiofiles.open(responses_file, 'w') as f:
+                await f.write(json.dumps(responses, indent=2))
+            
+            logger.info("Interview responses loaded")
+            
+        except Exception as e:
+            logger.error(f"Failed to load interview responses: {e}")
+    
+    async def _start_transcript_processing(self):
+        """Start real-time transcript processing"""
+        try:
+            # Mock transcript processing
+            logger.info("Transcript processing started")
+            
+            # In a real implementation, this would:
+            # 1. Process speech-to-text output
+            # 2. Analyze question intent
+            # 3. Generate appropriate responses
+            # 4. Display suggestions to user
+            
+        except Exception as e:
+            logger.error(f"Transcript processing failed: {e}")
+    
+    async def _initialize_stealth_overlay(self):
+        """Initialize stealth overlay for exam mode"""
+        try:
+            # Mock stealth overlay
+            logger.info("Stealth overlay initialized")
+            
+            # In a real implementation, this would:
+            # 1. Create invisible overlay
+            # 2. Bypass screen sharing detection
+            # 3. Implement anti-proctoring measures
+            # 4. Provide undetectable assistance
+            
+        except Exception as e:
+            logger.error(f"Stealth overlay initialization failed: {e}")
+    
+    async def _load_knowledge_base(self):
+        """Load knowledge base for exam assistance"""
+        try:
+            # Mock knowledge base
+            knowledge_base = {
+                "programming": {
+                    "python": "Python is a high-level programming language...",
+                    "javascript": "JavaScript is a dynamic programming language...",
+                    "algorithms": "Common algorithms include sorting, searching..."
+                },
+                "mathematics": {
+                    "calculus": "Calculus is the mathematical study of change...",
+                    "statistics": "Statistics is the science of collecting and analyzing data...",
+                    "linear_algebra": "Linear algebra is the study of vectors and matrices..."
+                },
+                "general": {
+                    "problem_solving": "Break down complex problems into smaller parts...",
+                    "critical_thinking": "Analyze information objectively and make reasoned judgments..."
+                }
+            }
+            
+            # Save knowledge base
+            kb_file = os.path.join(self.data_dir, "knowledge_base.json")
+            async with aiofiles.open(kb_file, 'w') as f:
+                await f.write(json.dumps(knowledge_base, indent=2))
+            
+            logger.info("Knowledge base loaded")
+            
+        except Exception as e:
+            logger.error(f"Failed to load knowledge base: {e}")
+    
+    async def _initialize_screen_analysis(self):
+        """Initialize screen analysis for exam questions"""
+        try:
+            # Mock screen analysis
+            logger.info("Screen analysis initialized")
+            
+            # In a real implementation, this would:
+            # 1. Capture screen content
+            # 2. Use OCR to extract text
+            # 3. Analyze questions
+            # 4. Generate answers
+            # 5. Display results stealthily
+            
+        except Exception as e:
+            logger.error(f"Screen analysis initialization failed: {e}")
+    
+    async def _start_background_monitoring(self):
+        """Start background monitoring for copilot mode"""
+        try:
+            # Mock background monitoring
+            logger.info("Background monitoring started")
+            
+            # In a real implementation, this would:
+            # 1. Monitor email clients
+            # 2. Watch Slack/Teams
+            # 3. Monitor code editors
+            # 4. Track web browsing
+            # 5. Generate contextual assistance
+            
+        except Exception as e:
+            logger.error(f"Background monitoring failed: {e}")
+    
+    async def _initialize_draft_generation(self):
+        """Initialize draft generation for copilot mode"""
+        try:
+            # Mock draft generation
+            logger.info("Draft generation initialized")
+            
+            # In a real implementation, this would:
+            # 1. Analyze email content
+            # 2. Generate reply drafts
+            # 3. Suggest code improvements
+            # 4. Create meeting notes
+            # 5. Draft documentation
+            
+        except Exception as e:
+            logger.error(f"Draft generation initialization failed: {e}")
+    
+    async def process_interview_audio(self, audio_data: bytes) -> Dict[str, Any]:
+        """Process interview audio and generate suggestions"""
+        try:
+            # Mock audio processing
+            transcript = "What experience do you have with React?"
+            
+            # Generate suggestions
+            suggestions = await self._generate_interview_suggestions(transcript)
+            
+            # Log transcript
+            self.interview_transcripts.append({
+                "timestamp": datetime.now().isoformat(),
+                "transcript": transcript,
+                "suggestions": suggestions
+            })
+            
+            await self._save_stealth_data()
+            
+            return {
+                "transcript": transcript,
+                "suggestions": suggestions,
+                "confidence": 0.85
+            }
+            
+        except Exception as e:
+            logger.error(f"Interview audio processing failed: {e}")
+            return {"error": str(e)}
+    
+    async def _generate_interview_suggestions(self, transcript: str) -> List[str]:
+        """Generate interview response suggestions"""
+        try:
+            # Simple keyword matching for suggestions
+            transcript_lower = transcript.lower()
+            
+            if "experience" in transcript_lower or "background" in transcript_lower:
+                return [
+                    "I have 5+ years of experience in full-stack development...",
+                    "My background includes working with modern frameworks...",
+                    "I've successfully delivered multiple projects..."
+                ]
+            elif "challenge" in transcript_lower or "difficult" in transcript_lower:
+                return [
+                    "One significant challenge I overcame was...",
+                    "I approach challenges by breaking them down...",
+                    "A difficult situation I handled was..."
+                ]
+            elif "team" in transcript_lower or "collaboration" in transcript_lower:
+                return [
+                    "I believe in open communication and collaboration...",
+                    "My experience with team projects includes...",
+                    "I work well with cross-functional teams..."
+                ]
+            else:
+                return [
+                    "That's an interesting question. Let me think about it...",
+                    "Based on my experience, I would say...",
+                    "I'm glad you asked about that..."
+                ]
+                
+        except Exception as e:
+            logger.error(f"Failed to generate suggestions: {e}")
+            return []
+    
+    async def analyze_exam_question(self, question: str) -> Dict[str, Any]:
+        """Analyze exam question and provide assistance"""
+        try:
+            # Mock question analysis
+            answer = await self._generate_exam_answer(question)
+            
+            # Log assistance
+            self.exam_assistance_logs.append({
+                "timestamp": datetime.now().isoformat(),
+                "question": question,
+                "answer": answer,
+                "confidence": 0.8
+            })
+            
+            await self._save_stealth_data()
+            
+            return {
+                "question": question,
+                "answer": answer,
+                "explanation": "Based on programming fundamentals...",
+                "confidence": 0.8
+            }
+            
+        except Exception as e:
+            logger.error(f"Exam question analysis failed: {e}")
+            return {"error": str(e)}
+    
+    async def _generate_exam_answer(self, question: str) -> str:
+        """Generate answer for exam question"""
+        try:
+            # Simple keyword matching for answers
+            question_lower = question.lower()
+            
+            if "python" in question_lower:
+                return "Python is a high-level, interpreted programming language known for its simplicity and readability."
+            elif "javascript" in question_lower:
+                return "JavaScript is a dynamic programming language primarily used for web development."
+            elif "algorithm" in question_lower:
+                return "An algorithm is a step-by-step procedure for solving a problem or completing a task."
+            elif "database" in question_lower:
+                return "A database is a structured collection of data that can be easily accessed, managed, and updated."
+            else:
+                return "This requires careful analysis of the problem and application of relevant concepts."
+                
+        except Exception as e:
+            logger.error(f"Failed to generate exam answer: {e}")
+            return "Unable to generate answer at this time."
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Get stealth manager status"""
+        return {
+            "current_mode": self.current_mode,
+            "active_sessions": len([s for s in self.stealth_sessions.values() if s.get("active", False)]),
+            "interview_transcripts": len(self.interview_transcripts),
+            "exam_assistance_logs": len(self.exam_assistance_logs)
+        }
+    
+    async def shutdown(self):
+        """Shutdown stealth manager"""
+        try:
+            # Save current state
+            await self._save_stealth_data()
+            
+            # Reset mode
+            self.current_mode = "full"
+            
+            logger.info("Stealth manager shut down")
+            
+        except Exception as e:
+            logger.error(f"Stealth manager shutdown failed: {e}")

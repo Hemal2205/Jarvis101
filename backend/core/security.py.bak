@@ -1,0 +1,346 @@
+import asyncio
+import json
+import logging
+import hashlib
+import secrets
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
+import aiofiles
+import os
+
+logger = logging.getLogger(__name__)
+
+class SecurityManager:
+    """Security management for J.A.R.V.I.S"""
+    
+    def __init__(self):
+        self.authenticated_users = {}
+        self.biometric_data = {}
+        self.security_logs = []
+        self.kill_switch_active = False
+        self.failed_attempts = {}
+        self.data_dir = "data/security"
+        
+    async def initialize(self):
+        """Initialize security system"""
+        try:
+            # Create data directory
+            os.makedirs(self.data_dir, exist_ok=True)
+            
+            # Load existing biometric data
+            await self._load_biometric_data()
+            
+            # Initialize default user (Hemal)
+            await self._initialize_default_user()
+            
+            logger.info("Security system initialized")
+            
+        except Exception as e:
+            logger.error(f"Security initialization failed: {e}")
+            raise
+    
+    async def _load_biometric_data(self):
+        """Load biometric data from storage"""
+        try:
+            biometric_file = os.path.join(self.data_dir, "biometrics.json")
+            if os.path.exists(biometric_file):
+                async with aiofiles.open(biometric_file, 'r') as f:
+                    content = await f.read()
+                    self.biometric_data = json.loads(content)
+                    logger.info("Biometric data loaded")
+            else:
+                self.biometric_data = {}
+                logger.info("No existing biometric data found")
+                
+        except Exception as e:
+            logger.error(f"Failed to load biometric data: {e}")
+            self.biometric_data = {}
+    
+    async def _save_biometric_data(self):
+        """Save biometric data to storage"""
+        try:
+            biometric_file = os.path.join(self.data_dir, "biometrics.json")
+            async with aiofiles.open(biometric_file, 'w') as f:
+                await f.write(json.dumps(self.biometric_data, indent=2))
+            logger.info("Biometric data saved")
+            
+        except Exception as e:
+            logger.error(f"Failed to save biometric data: {e}")
+    
+    async def _initialize_default_user(self):
+        """Initialize default user Hemal"""
+        if "Hemal" not in self.biometric_data:
+            self.biometric_data["Hemal"] = {
+                "face_encoding": self._generate_mock_face_encoding(),
+                "voice_signature": self._generate_mock_voice_signature(),
+                "created": datetime.now().isoformat(),
+                "last_authenticated": None,
+                "authentication_count": 0
+            }
+            await self._save_biometric_data()
+            logger.info("Default user Hemal initialized")
+    
+    def _generate_mock_face_encoding(self) -> str:
+        """Generate mock face encoding for demonstration"""
+        # In a real implementation, this would use FaceNet or similar
+        mock_encoding = [secrets.randbelow(256) for _ in range(128)]
+        return hashlib.sha256(json.dumps(mock_encoding).encode()).hexdigest()
+    
+    def _generate_mock_voice_signature(self) -> str:
+        """Generate mock voice signature for demonstration"""
+        # In a real implementation, this would use voice recognition
+        mock_features = [secrets.randbelow(100) for _ in range(50)]
+        return hashlib.sha256(json.dumps(mock_features).encode()).hexdigest()
+    
+    async def authenticate_face(self, user: str) -> bool:
+        """Authenticate user via face recognition"""
+        try:
+            # Log authentication attempt
+            self._log_security_event("face_auth_attempt", user)
+            
+            # Check if user exists
+            if user not in self.biometric_data:
+                logger.warning(f"Face authentication failed: user {user} not found")
+                await self._record_failed_attempt(user, "face")
+                return False
+            
+            # Simulate face recognition process
+            await asyncio.sleep(0.5)  # Simulate processing time
+            
+            # Mock face recognition (always succeeds for demonstration)
+            # In real implementation, this would compare face encodings
+            success = True  # Mock success
+            
+            if success:
+                await self._record_successful_authentication(user, "face")
+                logger.info(f"Face authentication successful for {user}")
+                return True
+            else:
+                await self._record_failed_attempt(user, "face")
+                logger.warning(f"Face authentication failed for {user}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Face authentication error: {e}")
+            return False
+    
+    async def authenticate_voice(self, user: str) -> bool:
+        """Authenticate user via voice recognition"""
+        try:
+            # Log authentication attempt
+            self._log_security_event("voice_auth_attempt", user)
+            
+            # Check if user exists
+            if user not in self.biometric_data:
+                logger.warning(f"Voice authentication failed: user {user} not found")
+                await self._record_failed_attempt(user, "voice")
+                return False
+            
+            # Simulate voice recognition process
+            await asyncio.sleep(0.8)  # Simulate processing time
+            
+            # Mock voice recognition (always succeeds for demonstration)
+            # In real implementation, this would compare voice signatures
+            success = True  # Mock success
+            
+            if success:
+                await self._record_successful_authentication(user, "voice")
+                logger.info(f"Voice authentication successful for {user}")
+                return True
+            else:
+                await self._record_failed_attempt(user, "voice")
+                logger.warning(f"Voice authentication failed for {user}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Voice authentication error: {e}")
+            return False
+    
+    async def _record_successful_authentication(self, user: str, method: str):
+        """Record successful authentication"""
+        try:
+            # Update authenticated users
+            self.authenticated_users[user] = {
+                "method": method,
+                "timestamp": datetime.now().isoformat(),
+                "session_id": secrets.token_hex(16)
+            }
+            
+            # Update biometric data
+            if user in self.biometric_data:
+                self.biometric_data[user]["last_authenticated"] = datetime.now().isoformat()
+                self.biometric_data[user]["authentication_count"] += 1
+                await self._save_biometric_data()
+            
+            # Clear failed attempts
+            if user in self.failed_attempts:
+                del self.failed_attempts[user]
+            
+            # Log success
+            self._log_security_event("auth_success", user, {"method": method})
+            
+        except Exception as e:
+            logger.error(f"Failed to record authentication: {e}")
+    
+    async def _record_failed_attempt(self, user: str, method: str):
+        """Record failed authentication attempt"""
+        try:
+            if user not in self.failed_attempts:
+                self.failed_attempts[user] = []
+            
+            self.failed_attempts[user].append({
+                "method": method,
+                "timestamp": datetime.now().isoformat(),
+                "ip": "127.0.0.1"  # Mock IP
+            })
+            
+            # Log failure
+            self._log_security_event("auth_failure", user, {"method": method})
+            
+            # Check for too many failed attempts
+            if len(self.failed_attempts[user]) >= 5:
+                await self._trigger_security_lockdown(user)
+                
+        except Exception as e:
+            logger.error(f"Failed to record failed attempt: {e}")
+    
+    async def _trigger_security_lockdown(self, user: str):
+        """Trigger security lockdown for user"""
+        try:
+            logger.warning(f"Security lockdown triggered for user {user}")
+            
+            # Log lockdown
+            self._log_security_event("security_lockdown", user)
+            
+            # Remove from authenticated users
+            if user in self.authenticated_users:
+                del self.authenticated_users[user]
+            
+            # TODO: Implement additional security measures
+            
+        except Exception as e:
+            logger.error(f"Security lockdown failed: {e}")
+    
+    def _log_security_event(self, event_type: str, user: str, details: Dict = None):
+        """Log security event"""
+        try:
+            event = {
+                "type": event_type,
+                "user": user,
+                "timestamp": datetime.now().isoformat(),
+                "details": details or {}
+            }
+            
+            self.security_logs.append(event)
+            
+            # Keep only last 1000 events
+            if len(self.security_logs) > 1000:
+                self.security_logs = self.security_logs[-1000:]
+                
+        except Exception as e:
+            logger.error(f"Failed to log security event: {e}")
+    
+    async def activate_kill_switch(self, user: str):
+        """Activate kill switch to wipe sensitive data"""
+        try:
+            if user not in self.authenticated_users:
+                logger.warning(f"Kill switch denied: user {user} not authenticated")
+                return False
+            
+            logger.critical(f"KILL SWITCH ACTIVATED by {user}")
+            
+            self.kill_switch_active = True
+            
+            # Log kill switch activation
+            self._log_security_event("kill_switch_activated", user)
+            
+            # Clear sensitive data
+            await self._wipe_sensitive_data()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Kill switch activation failed: {e}")
+            return False
+    
+    async def _wipe_sensitive_data(self):
+        """Wipe sensitive data"""
+        try:
+            # Clear authenticated users
+            self.authenticated_users.clear()
+            
+            # Clear biometric data
+            self.biometric_data.clear()
+            
+            # Clear security logs
+            self.security_logs.clear()
+            
+            # Clear failed attempts
+            self.failed_attempts.clear()
+            
+            # Save empty data
+            await self._save_biometric_data()
+            
+            logger.info("Sensitive data wiped")
+            
+        except Exception as e:
+            logger.error(f"Data wipe failed: {e}")
+    
+    async def reset_authentication(self):
+        """Reset authentication state"""
+        try:
+            self.authenticated_users.clear()
+            self.kill_switch_active = False
+            logger.info("Authentication state reset")
+            
+        except Exception as e:
+            logger.error(f"Authentication reset failed: {e}")
+    
+    async def register_biometric_data(self, user: str, face_data: str = None, voice_data: str = None):
+        """Register new biometric data for user"""
+        try:
+            if user not in self.biometric_data:
+                self.biometric_data[user] = {
+                    "created": datetime.now().isoformat(),
+                    "last_authenticated": None,
+                    "authentication_count": 0
+                }
+            
+            if face_data:
+                self.biometric_data[user]["face_encoding"] = face_data
+            
+            if voice_data:
+                self.biometric_data[user]["voice_signature"] = voice_data
+            
+            await self._save_biometric_data()
+            
+            logger.info(f"Biometric data registered for {user}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Biometric registration failed: {e}")
+            return False
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Get security system status"""
+        return {
+            "authenticated_users": len(self.authenticated_users),
+            "registered_users": len(self.biometric_data),
+            "kill_switch_active": self.kill_switch_active,
+            "security_events": len(self.security_logs),
+            "failed_attempts": sum(len(attempts) for attempts in self.failed_attempts.values())
+        }
+    
+    async def shutdown(self):
+        """Shutdown security system"""
+        try:
+            # Save current state
+            await self._save_biometric_data()
+            
+            # Clear runtime data
+            self.authenticated_users.clear()
+            
+            logger.info("Security system shut down")
+            
+        except Exception as e:
+            logger.error(f"Security shutdown failed: {e}")

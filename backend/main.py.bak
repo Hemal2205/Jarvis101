@@ -1,0 +1,331 @@
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from typing import List, Optional
+import asyncio
+import json
+import os
+from datetime import datetime
+import socketio
+from contextlib import asynccontextmanager
+
+# Import our modules
+from core.brain import MultiBrain
+from core.security import SecurityManager
+from core.memory import MemoryVault
+from core.copy_engine import CopyEngine
+from core.stealth import StealthManager
+from core.evolution import EvolutionEngine
+
+# Global instances
+brain = MultiBrain()
+security = SecurityManager()
+memory = MemoryVault()
+copy_engine = CopyEngine()
+stealth = StealthManager()
+evolution = EvolutionEngine()
+
+# Socket.IO server
+sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode="asgi")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("🚀 J.A.R.V.I.S System initializing...")
+    await brain.initialize()
+    await security.initialize()
+    await memory.initialize()
+    await copy_engine.initialize()
+    await stealth.initialize()
+    await evolution.initialize()
+    print("✅ J.A.R.V.I.S System ready!")
+    
+    yield
+    
+    # Shutdown
+    print("🔥 J.A.R.V.I.S System shutting down...")
+    await brain.shutdown()
+    await security.shutdown()
+    await memory.shutdown()
+    await copy_engine.shutdown()
+    await stealth.shutdown()
+    await evolution.shutdown()
+    print("👋 J.A.R.V.I.S System offline.")
+
+app = FastAPI(
+    title="J.A.R.V.I.S API",
+    description="Fully Autonomous AI System",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount socket.io
+socket_app = socketio.ASGIApp(sio, app)
+
+# Data models
+class AuthRequest(BaseModel):
+    method: str
+    user: str
+
+class CommandRequest(BaseModel):
+    command: str
+    user: str
+
+class MemoryRequest(BaseModel):
+    content: str
+    type: str
+    user: str
+
+class CopyRequest(BaseModel):
+    name: str
+    creator: str
+
+class StealthModeRequest(BaseModel):
+    mode: str
+
+# Socket.IO events
+@sio.event
+async def connect(sid, environ):
+    print(f"Client connected: {sid}")
+    await sio.emit('system_status', {
+        'brain': True,
+        'security': True,
+        'memory': True,
+        'copyEngine': True
+    }, room=sid)
+
+@sio.event
+async def disconnect(sid):
+    print(f"Client disconnected: {sid}")
+
+@sio.event
+async def mode_change(sid, mode):
+    print(f"Mode changed to: {mode}")
+    await stealth.set_mode(mode)
+
+@sio.event
+async def record_memory(sid, memory_data):
+    memory_id = await memory.record_memory(
+        content=memory_data['content'],
+        memory_type=memory_data['type'],
+        user='Hemal'
+    )
+    await sio.emit('memory_recorded', {
+        'id': memory_id,
+        **memory_data
+    }, room=sid)
+
+@sio.event
+async def play_memory(sid, memory_id):
+    memory_data = await memory.get_memory(memory_id)
+    await sio.emit('memory_playback', memory_data, room=sid)
+
+@sio.event
+async def kill_switch(sid):
+    print("🚨 KILL SWITCH ACTIVATED!")
+    await memory.wipe_memories()
+    await security.reset_authentication()
+    await sio.emit('system_shutdown', {}, room=sid)
+
+@sio.event
+async def trigger_evolution(sid):
+    print("🧬 Manual evolution triggered!")
+    result = await evolution.evolve()
+    await sio.emit('evolution_complete', result, room=sid)
+
+# API Routes
+@app.get("/")
+async def root():
+    return {"message": "J.A.R.V.I.S System Online", "version": "1.0.0"}
+
+@app.post("/api/auth/authenticate")
+async def authenticate(request: AuthRequest):
+    """Handle biometric authentication"""
+    try:
+        if request.method == "face":
+            result = await security.authenticate_face(request.user)
+        elif request.method == "voice":
+            result = await security.authenticate_voice(request.user)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid authentication method")
+        
+        return {"success": result, "user": request.user}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/command")
+async def process_command(request: CommandRequest):
+    """Process natural language commands"""
+    try:
+        response = await brain.process_command(request.command, request.user)
+        return {
+            "success": True,
+            "response": response.get("text", ""),
+            "speak": response.get("speak", False),
+            "action": response.get("action", None)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/memory/record")
+async def record_memory(request: MemoryRequest):
+    """Record a new memory"""
+    try:
+        memory_id = await memory.record_memory(
+            content=request.content,
+            memory_type=request.type,
+            user=request.user
+        )
+        return {"success": True, "memory_id": memory_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/memory/list")
+async def list_memories(user: str = "Hemal"):
+    """Get all memories for a user"""
+    try:
+        memories = await memory.get_all_memories(user)
+        return {"memories": memories}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/memory/search")
+async def search_memories(user: str = "Hemal", query: str = ""):
+    """Search memories"""
+    try:
+        memories = await memory.search_memories(user, query)
+        return {"memories": memories}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/copy/create")
+async def create_copy(request: CopyRequest):
+    """Create a new copy of J.A.R.V.I.S"""
+    try:
+        copy_id = await copy_engine.create_copy(
+            name=request.name,
+            creator=request.creator
+        )
+        download_url = f"/api/copy/download/{copy_id}"
+        return {"success": True, "copy_id": copy_id, "downloadUrl": download_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/copy/download/{copy_id}")
+async def download_copy(copy_id: str):
+    """Download a copy installer"""
+    try:
+        file_path = await copy_engine.get_copy_installer(copy_id)
+        return {"download_url": file_path}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/copy/list")
+async def list_copies():
+    """Get all copies"""
+    try:
+        copies = await copy_engine.get_all_copies()
+        return {"copies": copies}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stealth/mode")
+async def set_stealth_mode(request: StealthModeRequest):
+    """Set stealth mode"""
+    try:
+        await stealth.set_mode(request.mode)
+        return {"success": True, "mode": request.mode}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stealth/interview/audio")
+async def process_interview_audio():
+    """Process interview audio for assistance"""
+    try:
+        # Mock audio data for now
+        result = await stealth.process_interview_audio(b"mock_audio_data")
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stealth/exam/question")
+async def analyze_exam_question(question: str):
+    """Analyze exam question for assistance"""
+    try:
+        result = await stealth.analyze_exam_question(question)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/system/status")
+async def get_system_status():
+    """Get current system status"""
+    try:
+        return {
+            "brain": await brain.get_status(),
+            "security": await security.get_status(),
+            "memory": await memory.get_status(),
+            "copyEngine": await copy_engine.get_status(),
+            "stealth": await stealth.get_status(),
+            "evolution": await evolution.get_status()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/evolution/trigger")
+async def trigger_evolution():
+    """Trigger autonomous evolution"""
+    try:
+        result = await evolution.evolve()
+        return {"success": True, "improvements": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/evolution/history")
+async def get_evolution_history():
+    """Get evolution history"""
+    try:
+        history = await evolution.get_evolution_history()
+        return {"history": history}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/evolution/rollback/{snapshot_id}")
+async def rollback_evolution(snapshot_id: str):
+    """Rollback to a specific snapshot"""
+    try:
+        result = await evolution.force_rollback(snapshot_id)
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/security/kill-switch")
+async def activate_kill_switch():
+    """Activate emergency kill switch"""
+    try:
+        result = await security.activate_kill_switch("Hemal")
+        if result:
+            await memory.wipe_memories()
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:socket_app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
+    )

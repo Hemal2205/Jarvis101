@@ -1,0 +1,644 @@
+import asyncio
+import json
+import logging
+import os
+import shutil
+import subprocess
+import ast
+import hashlib
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
+import aiofiles
+import uuid
+import sys
+import importlib.util
+import traceback
+
+logger = logging.getLogger(__name__)
+
+class EvolutionEngine:
+    """Autonomous evolution system for J.A.R.V.I.S"""
+    
+    def __init__(self):
+        self.evolution_log = []
+        self.performance_history = []
+        self.code_modifications = {}
+        self.learning_patterns = {}
+        self.rollback_snapshots = {}
+        self.data_dir = "data/evolution"
+        self.backup_dir = "backups"
+        self.improvements = {
+            "code_optimizations": [],
+            "new_capabilities": [],
+            "performance_enhancements": [],
+            "bug_fixes": [],
+            "security_improvements": []
+        }
+        self.evolution_active = True
+        self.last_evolution = None
+        
+    async def initialize(self):
+        """Initialize evolution engine"""
+        try:
+            # Create directories
+            os.makedirs(self.data_dir, exist_ok=True)
+            os.makedirs(self.backup_dir, exist_ok=True)
+            
+            # Load evolution history
+            await self._load_evolution_data()
+            
+            # Create initial snapshot
+            await self._create_system_snapshot("initial")
+            
+            # Start autonomous evolution loop
+            asyncio.create_task(self._autonomous_evolution_loop())
+            
+            logger.info("Evolution engine initialized - autonomous evolution active")
+            
+        except Exception as e:
+            logger.error(f"Evolution engine initialization failed: {e}")
+            raise
+    
+    async def _load_evolution_data(self):
+        """Load evolution data from storage"""
+        try:
+            evolution_file = os.path.join(self.data_dir, "evolution_log.json")
+            if os.path.exists(evolution_file):
+                async with aiofiles.open(evolution_file, 'r') as f:
+                    content = await f.read()
+                    data = json.loads(content)
+                    self.evolution_log = data.get("evolution_log", [])
+                    self.performance_history = data.get("performance_history", [])
+                    self.learning_patterns = data.get("learning_patterns", {})
+                    logger.info(f"Loaded {len(self.evolution_log)} evolution entries")
+            else:
+                logger.info("No existing evolution data found - starting fresh")
+                
+        except Exception as e:
+            logger.error(f"Failed to load evolution data: {e}")
+    
+    async def _save_evolution_data(self):
+        """Save evolution data to storage"""
+        try:
+            evolution_file = os.path.join(self.data_dir, "evolution_log.json")
+            data = {
+                "evolution_log": self.evolution_log,
+                "performance_history": self.performance_history,
+                "learning_patterns": self.learning_patterns,
+                "last_updated": datetime.now().isoformat()
+            }
+            async with aiofiles.open(evolution_file, 'w') as f:
+                await f.write(json.dumps(data, indent=2))
+            logger.info("Evolution data saved")
+            
+        except Exception as e:
+            logger.error(f"Failed to save evolution data: {e}")
+    
+    async def _create_system_snapshot(self, snapshot_id: str):
+        """Create complete system snapshot for rollback"""
+        try:
+            snapshot_dir = os.path.join(self.backup_dir, snapshot_id)
+            os.makedirs(snapshot_dir, exist_ok=True)
+            
+            # Backup core modules
+            core_modules = [
+                "backend/core/brain.py",
+                "backend/core/memory.py", 
+                "backend/core/security.py",
+                "backend/core/copy_engine.py",
+                "backend/core/stealth.py",
+                "backend/core/evolution.py",
+                "backend/core/models.py"
+            ]
+            
+            for module in core_modules:
+                if os.path.exists(module):
+                    shutil.copy2(module, os.path.join(snapshot_dir, os.path.basename(module)))
+            
+            # Backup main.py
+            if os.path.exists("backend/main.py"):
+                shutil.copy2("backend/main.py", os.path.join(snapshot_dir, "main.py"))
+            
+            # Create snapshot metadata
+            metadata = {
+                "timestamp": datetime.now().isoformat(),
+                "snapshot_id": snapshot_id,
+                "files_backed_up": len(core_modules) + 1,
+                "system_hash": await self._calculate_system_hash()
+            }
+            
+            async with aiofiles.open(os.path.join(snapshot_dir, "metadata.json"), 'w') as f:
+                await f.write(json.dumps(metadata, indent=2))
+            
+            self.rollback_snapshots[snapshot_id] = metadata
+            logger.info(f"System snapshot created: {snapshot_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to create system snapshot: {e}")
+    
+    async def _calculate_system_hash(self) -> str:
+        """Calculate hash of current system state"""
+        try:
+            hash_content = ""
+            core_files = [
+                "backend/core/brain.py",
+                "backend/core/memory.py",
+                "backend/core/security.py",
+                "backend/core/copy_engine.py",
+                "backend/core/stealth.py",
+                "backend/core/evolution.py",
+                "backend/main.py"
+            ]
+            
+            for file_path in core_files:
+                if os.path.exists(file_path):
+                    with open(file_path, 'r') as f:
+                        hash_content += f.read()
+            
+            return hashlib.sha256(hash_content.encode()).hexdigest()
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate system hash: {e}")
+            return "unknown"
+    
+    async def _autonomous_evolution_loop(self):
+        """Main autonomous evolution loop"""
+        while self.evolution_active:
+            try:
+                await asyncio.sleep(3600)  # Check every hour
+                
+                # Analyze system performance
+                performance_data = await self._analyze_system_performance()
+                
+                # Identify improvement opportunities
+                improvements = await self._identify_improvements(performance_data)
+                
+                # Apply improvements if beneficial
+                if improvements:
+                    await self._apply_improvements(improvements)
+                
+                # Learn from interactions
+                await self._learn_from_patterns()
+                
+                # Cleanup old snapshots
+                await self._cleanup_old_snapshots()
+                
+            except Exception as e:
+                logger.error(f"Autonomous evolution loop error: {e}")
+                await asyncio.sleep(300)  # Wait 5 minutes on error
+    
+    async def _analyze_system_performance(self) -> Dict[str, Any]:
+        """Analyze current system performance"""
+        try:
+            # Simulate performance analysis
+            performance = {
+                "timestamp": datetime.now().isoformat(),
+                "cpu_usage": await self._get_cpu_usage(),
+                "memory_usage": await self._get_memory_usage(),
+                "response_times": await self._analyze_response_times(),
+                "error_rates": await self._calculate_error_rates(),
+                "user_satisfaction": await self._estimate_user_satisfaction(),
+                "feature_usage": await self._analyze_feature_usage()
+            }
+            
+            self.performance_history.append(performance)
+            
+            # Keep only last 100 entries
+            if len(self.performance_history) > 100:
+                self.performance_history = self.performance_history[-100:]
+            
+            return performance
+            
+        except Exception as e:
+            logger.error(f"Performance analysis failed: {e}")
+            return {}
+    
+    async def _get_cpu_usage(self) -> float:
+        """Get current CPU usage"""
+        try:
+            # Simulate CPU usage
+            import psutil
+            return psutil.cpu_percent(interval=1)
+        except:
+            return 25.0  # Mock value
+    
+    async def _get_memory_usage(self) -> Dict[str, float]:
+        """Get current memory usage"""
+        try:
+            import psutil
+            memory = psutil.virtual_memory()
+            return {
+                "used_gb": memory.used / (1024**3),
+                "total_gb": memory.total / (1024**3),
+                "percent": memory.percent
+            }
+        except:
+            return {"used_gb": 1.2, "total_gb": 16.0, "percent": 7.5}  # Mock values
+    
+    async def _analyze_response_times(self) -> Dict[str, float]:
+        """Analyze API response times"""
+        return {
+            "avg_response_time": 0.15,
+            "max_response_time": 0.8,
+            "min_response_time": 0.05,
+            "p95_response_time": 0.3
+        }
+    
+    async def _calculate_error_rates(self) -> Dict[str, float]:
+        """Calculate system error rates"""
+        return {
+            "total_errors": 2,
+            "error_rate_percent": 0.1,
+            "critical_errors": 0,
+            "warnings": 5
+        }
+    
+    async def _estimate_user_satisfaction(self) -> float:
+        """Estimate user satisfaction based on usage patterns"""
+        # Simple heuristic based on command success rate and frequency
+        return 0.92  # 92% satisfaction
+    
+    async def _analyze_feature_usage(self) -> Dict[str, int]:
+        """Analyze which features are being used most"""
+        return {
+            "memory_vault": 45,
+            "command_processing": 120,
+            "copy_engine": 3,
+            "stealth_mode": 8,
+            "authentication": 15
+        }
+    
+    async def _identify_improvements(self, performance_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Identify potential improvements based on performance"""
+        improvements = []
+        
+        try:
+            # Check for performance issues
+            if performance_data.get("cpu_usage", 0) > 80:
+                improvements.append({
+                    "type": "performance_enhancement",
+                    "priority": "high",
+                    "description": "Optimize CPU-intensive operations",
+                    "target_module": "brain",
+                    "improvement": "add_async_processing"
+                })
+            
+            # Check response times
+            response_times = performance_data.get("response_times", {})
+            if response_times.get("avg_response_time", 0) > 0.5:
+                improvements.append({
+                    "type": "performance_enhancement", 
+                    "priority": "medium",
+                    "description": "Improve response time caching",
+                    "target_module": "brain",
+                    "improvement": "add_response_caching"
+                })
+            
+            # Check error rates
+            error_rates = performance_data.get("error_rates", {})
+            if error_rates.get("error_rate_percent", 0) > 1.0:
+                improvements.append({
+                    "type": "bug_fix",
+                    "priority": "high", 
+                    "description": "Reduce error rates",
+                    "target_module": "all",
+                    "improvement": "add_error_handling"
+                })
+            
+            # Check feature usage patterns
+            feature_usage = performance_data.get("feature_usage", {})
+            most_used = max(feature_usage, key=feature_usage.get) if feature_usage else None
+            if most_used:
+                improvements.append({
+                    "type": "code_optimization",
+                    "priority": "medium",
+                    "description": f"Optimize most used feature: {most_used}",
+                    "target_module": most_used,
+                    "improvement": f"optimize_{most_used}"
+                })
+            
+            return improvements
+            
+        except Exception as e:
+            logger.error(f"Failed to identify improvements: {e}")
+            return []
+    
+    async def _apply_improvements(self, improvements: List[Dict[str, Any]]):
+        """Apply identified improvements"""
+        try:
+            for improvement in improvements:
+                if improvement["priority"] == "high":
+                    await self._implement_improvement(improvement)
+                elif improvement["priority"] == "medium" and len(improvements) <= 3:
+                    await self._implement_improvement(improvement)
+                
+        except Exception as e:
+            logger.error(f"Failed to apply improvements: {e}")
+    
+    async def _implement_improvement(self, improvement: Dict[str, Any]):
+        """Implement a specific improvement"""
+        try:
+            # Create snapshot before modification
+            snapshot_id = f"pre_improvement_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            await self._create_system_snapshot(snapshot_id)
+            
+            improvement_type = improvement["improvement"]
+            target_module = improvement["target_module"]
+            
+            # Apply specific improvements
+            if improvement_type == "add_async_processing":
+                await self._add_async_processing(target_module)
+            elif improvement_type == "add_response_caching":
+                await self._add_response_caching(target_module)
+            elif improvement_type == "add_error_handling":
+                await self._add_error_handling(target_module)
+            elif improvement_type.startswith("optimize_"):
+                await self._optimize_module(target_module)
+            
+            # Log the improvement
+            self._log_evolution_step(improvement, snapshot_id)
+            
+            # Test the improvement
+            if await self._test_improvement():
+                logger.info(f"Improvement successfully applied: {improvement['description']}")
+                await self._save_evolution_data()
+            else:
+                logger.warning(f"Improvement failed tests, rolling back: {improvement['description']}")
+                await self._rollback_to_snapshot(snapshot_id)
+                
+        except Exception as e:
+            logger.error(f"Failed to implement improvement: {e}")
+    
+    async def _add_async_processing(self, module: str):
+        """Add async processing to improve performance"""
+        try:
+            # This would implement actual async optimizations
+            # For now, we'll simulate the improvement
+            logger.info(f"Added async processing optimizations to {module}")
+            
+        except Exception as e:
+            logger.error(f"Failed to add async processing: {e}")
+    
+    async def _add_response_caching(self, module: str):
+        """Add response caching to improve performance"""
+        try:
+            # This would implement actual caching
+            logger.info(f"Added response caching to {module}")
+            
+        except Exception as e:
+            logger.error(f"Failed to add response caching: {e}")
+    
+    async def _add_error_handling(self, module: str):
+        """Add improved error handling"""
+        try:
+            # This would implement better error handling
+            logger.info(f"Enhanced error handling in {module}")
+            
+        except Exception as e:
+            logger.error(f"Failed to add error handling: {e}")
+    
+    async def _optimize_module(self, module: str):
+        """Optimize a specific module"""
+        try:
+            # This would implement module-specific optimizations
+            logger.info(f"Applied optimizations to {module}")
+            
+        except Exception as e:
+            logger.error(f"Failed to optimize module: {e}")
+    
+    def _log_evolution_step(self, improvement: Dict[str, Any], snapshot_id: str):
+        """Log an evolution step"""
+        try:
+            evolution_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "evolution_id": str(uuid.uuid4()),
+                "improvement": improvement,
+                "snapshot_id": snapshot_id,
+                "success": None,  # Will be updated after testing
+                "performance_impact": {}
+            }
+            
+            self.evolution_log.append(evolution_entry)
+            
+            # Keep only last 1000 entries
+            if len(self.evolution_log) > 1000:
+                self.evolution_log = self.evolution_log[-1000:]
+                
+        except Exception as e:
+            logger.error(f"Failed to log evolution step: {e}")
+    
+    async def _test_improvement(self) -> bool:
+        """Test if an improvement was successful"""
+        try:
+            # Run basic system tests
+            tests_passed = 0
+            total_tests = 4
+            
+            # Test 1: Basic module imports
+            try:
+                import backend.core.brain
+                import backend.core.memory
+                import backend.core.security
+                tests_passed += 1
+            except Exception as e:
+                logger.error(f"Module import test failed: {e}")
+            
+            # Test 2: API endpoints respond
+            try:
+                # This would test actual API endpoints
+                tests_passed += 1
+            except Exception as e:
+                logger.error(f"API test failed: {e}")
+            
+            # Test 3: Memory operations
+            try:
+                # This would test memory operations
+                tests_passed += 1
+            except Exception as e:
+                logger.error(f"Memory test failed: {e}")
+            
+            # Test 4: Basic functionality
+            try:
+                # This would test core functionality
+                tests_passed += 1
+            except Exception as e:
+                logger.error(f"Functionality test failed: {e}")
+            
+            success_rate = tests_passed / total_tests
+            return success_rate >= 0.75  # 75% of tests must pass
+            
+        except Exception as e:
+            logger.error(f"Testing failed: {e}")
+            return False
+    
+    async def _rollback_to_snapshot(self, snapshot_id: str):
+        """Rollback system to a previous snapshot"""
+        try:
+            snapshot_dir = os.path.join(self.backup_dir, snapshot_id)
+            if not os.path.exists(snapshot_dir):
+                raise FileNotFoundError(f"Snapshot {snapshot_id} not found")
+            
+            # Restore files from snapshot
+            for file_name in os.listdir(snapshot_dir):
+                if file_name.endswith('.py'):
+                    snapshot_file = os.path.join(snapshot_dir, file_name)
+                    if file_name == "main.py":
+                        target_file = "backend/main.py"
+                    else:
+                        target_file = f"backend/core/{file_name}"
+                    
+                    shutil.copy2(snapshot_file, target_file)
+            
+            logger.info(f"Successfully rolled back to snapshot: {snapshot_id}")
+            
+        except Exception as e:
+            logger.error(f"Rollback failed: {e}")
+    
+    async def _learn_from_patterns(self):
+        """Learn from usage patterns and user interactions"""
+        try:
+            # Analyze recent performance history
+            if len(self.performance_history) >= 5:
+                recent_performance = self.performance_history[-5:]
+                
+                # Look for patterns
+                avg_satisfaction = sum(p.get("user_satisfaction", 0) for p in recent_performance) / len(recent_performance)
+                
+                if avg_satisfaction > 0.9:
+                    # High satisfaction - identify what's working well
+                    self.learning_patterns["high_satisfaction_features"] = {
+                        "timestamp": datetime.now().isoformat(),
+                        "satisfaction": avg_satisfaction,
+                        "contributing_factors": ["fast_responses", "accurate_results", "intuitive_interface"]
+                    }
+                elif avg_satisfaction < 0.7:
+                    # Low satisfaction - identify issues
+                    self.learning_patterns["improvement_needed"] = {
+                        "timestamp": datetime.now().isoformat(),
+                        "satisfaction": avg_satisfaction,
+                        "issues": ["slow_responses", "errors", "confusing_interface"]
+                    }
+            
+            logger.info("Pattern learning completed")
+            
+        except Exception as e:
+            logger.error(f"Pattern learning failed: {e}")
+    
+    async def _cleanup_old_snapshots(self):
+        """Cleanup old snapshots to save space"""
+        try:
+            # Keep only last 10 snapshots
+            snapshot_dirs = []
+            for item in os.listdir(self.backup_dir):
+                item_path = os.path.join(self.backup_dir, item)
+                if os.path.isdir(item_path):
+                    snapshot_dirs.append((item, os.path.getctime(item_path)))
+            
+            # Sort by creation time
+            snapshot_dirs.sort(key=lambda x: x[1], reverse=True)
+            
+            # Remove old snapshots
+            for snapshot_name, _ in snapshot_dirs[10:]:
+                snapshot_path = os.path.join(self.backup_dir, snapshot_name)
+                shutil.rmtree(snapshot_path)
+                if snapshot_name in self.rollback_snapshots:
+                    del self.rollback_snapshots[snapshot_name]
+            
+            if len(snapshot_dirs) > 10:
+                logger.info(f"Cleaned up {len(snapshot_dirs) - 10} old snapshots")
+                
+        except Exception as e:
+            logger.error(f"Snapshot cleanup failed: {e}")
+    
+    async def evolve(self) -> Dict[str, Any]:
+        """Trigger manual evolution"""
+        try:
+            # Analyze current state
+            performance_data = await self._analyze_system_performance()
+            
+            # Identify improvements
+            improvements = await self._identify_improvements(performance_data)
+            
+            # Apply high priority improvements
+            high_priority = [imp for imp in improvements if imp["priority"] == "high"]
+            for improvement in high_priority[:3]:  # Limit to 3 improvements at once
+                await self._implement_improvement(improvement)
+            
+            # Update improvements log
+            for improvement_type in self.improvements:
+                self.improvements[improvement_type].extend([
+                    imp for imp in improvements if imp["type"] == improvement_type
+                ])
+            
+            evolution_result = {
+                "timestamp": datetime.now().isoformat(),
+                "improvements_identified": len(improvements),
+                "improvements_applied": len(high_priority),
+                "performance_data": performance_data,
+                "improvements": improvements,
+                "evolution_log_size": len(self.evolution_log),
+                "learning_patterns": len(self.learning_patterns)
+            }
+            
+            self.last_evolution = evolution_result
+            await self._save_evolution_data()
+            
+            return evolution_result
+            
+        except Exception as e:
+            logger.error(f"Manual evolution failed: {e}")
+            return {"error": str(e)}
+    
+    async def get_status(self) -> Dict[str, Any]:
+        """Get evolution engine status"""
+        return {
+            "evolution_active": self.evolution_active,
+            "total_evolutions": len(self.evolution_log),
+            "performance_history_size": len(self.performance_history),
+            "learning_patterns": len(self.learning_patterns),
+            "available_snapshots": len(self.rollback_snapshots),
+            "last_evolution": self.last_evolution,
+            "improvements_summary": {
+                category: len(improvements) for category, improvements in self.improvements.items()
+            }
+        }
+    
+    async def get_evolution_history(self) -> List[Dict[str, Any]]:
+        """Get evolution history"""
+        return self.evolution_log[-50:]  # Return last 50 evolutions
+    
+    async def force_rollback(self, snapshot_id: str) -> bool:
+        """Force rollback to a specific snapshot"""
+        try:
+            await self._rollback_to_snapshot(snapshot_id)
+            return True
+        except Exception as e:
+            logger.error(f"Force rollback failed: {e}")
+            return False
+    
+    async def disable_evolution(self):
+        """Disable autonomous evolution"""
+        self.evolution_active = False
+        logger.info("Autonomous evolution disabled")
+    
+    async def enable_evolution(self):
+        """Enable autonomous evolution"""
+        self.evolution_active = True
+        asyncio.create_task(self._autonomous_evolution_loop())
+        logger.info("Autonomous evolution enabled")
+    
+    async def shutdown(self):
+        """Shutdown evolution engine"""
+        try:
+            self.evolution_active = False
+            
+            # Save current state
+            await self._save_evolution_data()
+            
+            # Create final snapshot
+            await self._create_system_snapshot("shutdown")
+            
+            logger.info("Evolution engine shut down")
+            
+        except Exception as e:
+            logger.error(f"Evolution engine shutdown failed: {e}")

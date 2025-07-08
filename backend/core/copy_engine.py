@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import zipfile
+import aiofiles
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import uuid
@@ -274,8 +275,8 @@ This is a standalone copy with limited support capabilities.
 """
             
             # Write content to file
-            with open(file_path, 'w') as f:
-                f.write(content)
+            async with aiofiles.open(file_path, 'w') as f:
+                await f.write(content)
                 
         except Exception as e:
             logger.error(f"Failed to create copy file {file_path}: {e}")
@@ -350,8 +351,9 @@ This is a standalone copy with limited support capabilities.
         try:
             copies_file = os.path.join(self.copies_dir, "copies.json")
             if os.path.exists(copies_file):
-                with open(copies_file, 'r') as f:
-                    self.copies = json.load(f)
+                async with aiofiles.open(copies_file, 'r') as f:
+                    content = await f.read()
+                    self.copies = json.loads(content)
                 logger.info(f"Loaded {len(self.copies)} copies")
             else:
                 self.copies = {}
@@ -364,8 +366,9 @@ This is a standalone copy with limited support capabilities.
         """Save copies to storage"""
         try:
             copies_file = os.path.join(self.copies_dir, "copies.json")
-            with open(copies_file, 'w') as f:
-                json.dump(self.copies, f, indent=2)
+            async with aiofiles.open(copies_file, 'w') as f:
+                content = json.dumps(self.copies, indent=2)
+                await f.write(content)
             logger.info("Copies saved")
         except Exception as e:
             logger.error(f"Failed to save copies: {e}")

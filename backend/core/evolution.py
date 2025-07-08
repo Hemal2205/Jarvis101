@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import shutil
+import aiofiles
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import hashlib
@@ -447,8 +448,9 @@ class EvolutionEngine:
         
         if os.path.exists(history_file):
             try:
-                with open(history_file, 'r') as f:
-                    self.evolution_history = json.load(f)
+                async with aiofiles.open(history_file, 'r') as f:
+                    content = await f.read()
+                    self.evolution_history = json.loads(content)
             except Exception as e:
                 print(f"Error loading evolution history: {e}")
                 self.evolution_history = []
@@ -457,8 +459,9 @@ class EvolutionEngine:
         """Save evolution history to disk"""
         history_file = os.path.join(self.evolution_dir, "evolution_history.json")
         
-        with open(history_file, 'w') as f:
-            json.dump(self.evolution_history, f, indent=2)
+        async with aiofiles.open(history_file, 'w') as f:
+            content = json.dumps(self.evolution_history, indent=2)
+            await f.write(content)
     
     def get_status(self) -> Dict[str, Any]:
         """Get evolution engine status"""

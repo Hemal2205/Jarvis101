@@ -1,30 +1,577 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useJarvis } from '../../context/JarvisContext';
-import { Eye, Mic, Shield, Lock, Zap } from 'lucide-react';
+import { Eye, Mic, Shield, Lock, Zap, User, Camera, MicIcon, Check, X, Loader } from 'lucide-react';
+
+interface RegistrationStep {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  completed: boolean;
+  active: boolean;
+}
 
 export const AuthenticationScreen: React.FC = () => {
   const { authenticate } = useJarvis();
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authMethod, setAuthMethod] = useState<'face' | 'voice' | null>(null);
+  const [registrationStep, setRegistrationStep] = useState<'username' | 'face' | 'voice' | 'complete'>('username');
+  const [username, setUsername] = useState('');
+  const [faceSamples, setFaceSamples] = useState<number>(0);
+  const [voiceSamples, setVoiceSamples] = useState<number>(0);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  const registrationSteps: RegistrationStep[] = [
+    {
+      id: 'username',
+      name: 'Username',
+      icon: <User className="w-5 h-5" />,
+      completed: registrationStep !== 'username',
+      active: registrationStep === 'username'
+    },
+    {
+      id: 'face',
+      name: 'Face Recognition',
+      icon: <Camera className="w-5 h-5" />,
+      completed: registrationStep === 'voice' || registrationStep === 'complete',
+      active: registrationStep === 'face'
+    },
+    {
+      id: 'voice',
+      name: 'Voice Recognition',
+      icon: <MicIcon className="w-5 h-5" />,
+      completed: registrationStep === 'complete',
+      active: registrationStep === 'voice'
+    }
+  ];
+
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
 
   const handleAuthenticate = async (method: 'face' | 'voice') => {
     setIsAuthenticating(true);
     setAuthMethod(method);
+    setError(null);
     
     try {
-      const success = await authenticate(method);
-      if (!success) {
-        alert('Authentication failed. Please try again.');
+      let result;
+      
+      if (method === 'face') {
+        const imageData = await captureImage();
+        if (!imageData) {
+          setError('Failed to capture image');
+          return;
+        }
+        result = await authenticateWithFace(imageData);
+      } else {
+        // Voice authentication would be implemented here
+        result = await authenticate(method);
+      }
+      
+      if (!result || !result.success) {
+        setError(result?.message || 'Authentication failed. Please try again.');
       }
     } catch (error) {
       console.error('Authentication error:', error);
-      alert('Authentication error. Please try again.');
+      setError('Authentication error. Please try again.');
     } finally {
       setIsAuthenticating(false);
       setAuthMethod(null);
     }
   };
+
+  const startRegistration = async () => {
+    if (!username.trim()) {
+      setError('Please enter a username');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/register/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setRegistrationStep('face');
+        setSuccess('Registration started successfully');
+        await initializeCamera();
+      } else {
+        setError(result.message || 'Registration failed');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      setError('Registration failed. Please try again.');
+    }
+  };
+
+  const initializeCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 640, height: 480 },
+        audio: false
+      });
+      
+      setStream(mediaStream);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (error) {
+      console.error('Camera initialization error:', error);
+      setError('Failed to access camera');
+    }
+  };
+
+  const captureImage = async (): Promise<Blob | null> => {
+    if (!videoRef.current || !canvasRef.current) return null;
+
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return null;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        resolve(blob);
+      }, 'image/jpeg', 0.8);
+    });
+  };
+
+  const registerFaceSample = async () => {
+    try {
+      const imageBlob = await captureImage();
+      if (!imageBlob) {
+        setError('Failed to capture image');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('image', imageBlob);
+
+      const response = await fetch('/api/register/face', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setFaceSamples(prev => prev + 1);
+        setSuccess(result.message);
+        
+        if (result.next_step === 'voice_enrollment') {
+          setRegistrationStep('voice');
+          await initializeMicrophone();
+        }
+      } else {
+        setError(result.message || 'Face registration failed');
+      }
+    } catch (error) {
+      console.error('Face registration error:', error);
+      setError('Face registration failed. Please try again.');
+    }
+  };
+
+  const initializeMicrophone = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: false,
+        audio: true
+      });
+      
+      setStream(mediaStream);
+      
+      const mediaRecorder = new MediaRecorder(mediaStream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+    } catch (error) {
+      console.error('Microphone initialization error:', error);
+      setError('Failed to access microphone');
+    }
+  };
+
+  const startVoiceRecording = () => {
+    if (!mediaRecorderRef.current) return;
+
+    const chunks: BlobPart[] = [];
+    
+    mediaRecorderRef.current.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+
+    mediaRecorderRef.current.onstop = async () => {
+      const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+      await registerVoiceSample(audioBlob);
+    };
+
+    mediaRecorderRef.current.start();
+    setIsRecording(true);
+
+    // Auto-stop after 3 seconds
+    setTimeout(() => {
+      if (mediaRecorderRef.current && isRecording) {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+      }
+    }, 3000);
+  };
+
+  const registerVoiceSample = async (audioBlob: Blob) => {
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+
+      const response = await fetch('/api/register/voice', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setVoiceSamples(prev => prev + 1);
+        setSuccess(result.message);
+        
+        if (result.next_step === 'complete_registration') {
+          await completeRegistration();
+        }
+      } else {
+        setError(result.message || 'Voice registration failed');
+      }
+    } catch (error) {
+      console.error('Voice registration error:', error);
+      setError('Voice registration failed. Please try again.');
+    }
+  };
+
+  const completeRegistration = async () => {
+    try {
+      const response = await fetch('/api/register/complete', {
+        method: 'POST'
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setRegistrationStep('complete');
+        setSuccess('Registration completed successfully! You can now log in.');
+        
+        // Clean up streams
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          setStream(null);
+        }
+        
+        // Auto-switch to login after 3 seconds
+        setTimeout(() => {
+          setMode('login');
+          setRegistrationStep('username');
+          setFaceSamples(0);
+          setVoiceSamples(0);
+        }, 3000);
+      } else {
+        setError(result.message || 'Registration completion failed');
+      }
+    } catch (error) {
+      console.error('Registration completion error:', error);
+      setError('Registration completion failed. Please try again.');
+    }
+  };
+
+  const authenticateWithFace = async (imageBlob: Blob) => {
+    const formData = new FormData();
+    formData.append('image', imageBlob);
+
+    const response = await fetch('/api/authenticate/face', {
+      method: 'POST',
+      body: formData
+    });
+
+    return await response.json();
+  };
+
+  const renderLoginMode = () => (
+    <div className="flex flex-col items-center space-y-8">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-center"
+      >
+        <h1 className="text-4xl font-bold text-cyan-300 mb-4">J.A.R.V.I.S</h1>
+        <p className="text-xl text-gray-300">Just A Rather Very Intelligent System</p>
+        <p className="text-sm text-gray-400 mt-2">Please authenticate to continue</p>
+      </motion.div>
+
+      <div className="flex space-x-8">
+        <motion.button
+          whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(0, 255, 255, 0.3)" }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => handleAuthenticate('face')}
+          disabled={isAuthenticating}
+          className="flex flex-col items-center space-y-4 p-8 bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-cyan-500/30 rounded-xl backdrop-blur-sm"
+        >
+          <div className="relative">
+            <Eye className="w-12 h-12 text-cyan-400" />
+            {isAuthenticating && authMethod === 'face' && (
+              <div className="absolute -top-2 -right-2">
+                <Loader className="w-6 h-6 text-cyan-400 animate-spin" />
+              </div>
+            )}
+          </div>
+          <span className="text-lg text-cyan-300">Face Authentication</span>
+        </motion.button>
+
+        <motion.button
+          whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(0, 255, 255, 0.3)" }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => handleAuthenticate('voice')}
+          disabled={isAuthenticating}
+          className="flex flex-col items-center space-y-4 p-8 bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-cyan-500/30 rounded-xl backdrop-blur-sm"
+        >
+          <div className="relative">
+            <Mic className="w-12 h-12 text-cyan-400" />
+            {isAuthenticating && authMethod === 'voice' && (
+              <div className="absolute -top-2 -right-2">
+                <Loader className="w-6 h-6 text-cyan-400 animate-spin" />
+              </div>
+            )}
+          </div>
+          <span className="text-lg text-cyan-300">Voice Authentication</span>
+        </motion.button>
+      </div>
+
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setMode('register')}
+        className="text-cyan-400 hover:text-cyan-300 transition-colors"
+      >
+        New user? Register here
+      </motion.button>
+    </div>
+  );
+
+  const renderRegistrationMode = () => (
+    <div className="flex flex-col items-center space-y-8 max-w-md">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-center"
+      >
+        <h1 className="text-3xl font-bold text-cyan-300 mb-4">User Registration</h1>
+        <p className="text-lg text-gray-300">Set up your biometric authentication</p>
+      </motion.div>
+
+      {/* Registration Steps */}
+      <div className="flex space-x-4 mb-6">
+        {registrationSteps.map((step, index) => (
+          <motion.div
+            key={step.id}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.1 }}
+            className={`flex items-center space-x-2 p-3 rounded-lg ${
+              step.completed 
+                ? 'bg-green-500/20 border-green-500/50' 
+                : step.active 
+                  ? 'bg-cyan-500/20 border-cyan-500/50' 
+                  : 'bg-gray-500/20 border-gray-500/50'
+            } border`}
+          >
+            {step.completed ? (
+              <Check className="w-5 h-5 text-green-400" />
+            ) : (
+              step.icon
+            )}
+            <span className={`text-sm ${
+              step.completed ? 'text-green-300' : step.active ? 'text-cyan-300' : 'text-gray-400'
+            }`}>
+              {step.name}
+            </span>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Registration Step Content */}
+      <div className="w-full">
+        {registrationStep === 'username' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Username
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-900/50 border border-cyan-500/30 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                placeholder="Enter your username"
+              />
+            </div>
+            
+            <button
+              onClick={startRegistration}
+              disabled={!username.trim()}
+              className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-3 px-6 rounded-lg font-medium hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              Start Registration
+            </button>
+          </motion.div>
+        )}
+
+        {registrationStep === 'face' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-cyan-300 mb-2">Face Recognition Setup</h3>
+              <p className="text-sm text-gray-400">
+                We need 3 face samples. Current: {faceSamples}/3
+              </p>
+            </div>
+            
+            <div className="relative">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-64 object-cover rounded-lg border border-cyan-500/30"
+              />
+              <canvas ref={canvasRef} className="hidden" />
+              
+              <div className="absolute inset-0 border-2 border-cyan-400/50 rounded-lg pointer-events-none">
+                <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-cyan-400"></div>
+                <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400"></div>
+                <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-cyan-400"></div>
+                <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400"></div>
+              </div>
+            </div>
+            
+            <button
+              onClick={registerFaceSample}
+              disabled={faceSamples >= 3}
+              className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-3 px-6 rounded-lg font-medium hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2"
+            >
+              <Camera className="w-5 h-5" />
+              <span>Capture Face Sample</span>
+            </button>
+          </motion.div>
+        )}
+
+        {registrationStep === 'voice' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-cyan-300 mb-2">Voice Recognition Setup</h3>
+              <p className="text-sm text-gray-400">
+                We need 3 voice samples. Current: {voiceSamples}/3
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Say: "J.A.R.V.I.S, this is my voice authentication sample"
+              </p>
+            </div>
+            
+            <div className="flex flex-col items-center space-y-4">
+              <div className={`w-32 h-32 rounded-full border-4 flex items-center justify-center ${
+                isRecording ? 'border-red-500 bg-red-500/20' : 'border-cyan-500 bg-cyan-500/20'
+              }`}>
+                <MicIcon className={`w-16 h-16 ${isRecording ? 'text-red-400' : 'text-cyan-400'}`} />
+              </div>
+              
+              <button
+                onClick={startVoiceRecording}
+                disabled={isRecording || voiceSamples >= 3}
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-3 px-6 rounded-lg font-medium hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2"
+              >
+                {isRecording ? (
+                  <>
+                    <Loader className="w-5 h-5 animate-spin" />
+                    <span>Recording...</span>
+                  </>
+                ) : (
+                  <>
+                    <MicIcon className="w-5 h-5" />
+                    <span>Record Voice Sample</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {registrationStep === 'complete' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center space-y-6"
+          >
+            <div className="w-20 h-20 mx-auto bg-green-500/20 rounded-full flex items-center justify-center">
+              <Check className="w-10 h-10 text-green-400" />
+            </div>
+            
+            <div>
+              <h3 className="text-2xl font-bold text-green-300 mb-2">Registration Complete!</h3>
+              <p className="text-gray-400">
+                Your biometric authentication has been set up successfully.
+              </p>
+            </div>
+            
+            <button
+              onClick={() => setMode('login')}
+              className="bg-gradient-to-r from-green-500 to-cyan-500 text-white py-3 px-6 rounded-lg font-medium hover:from-green-600 hover:to-cyan-600 transition-all"
+            >
+              Go to Login
+            </button>
+          </motion.div>
+        )}
+      </div>
+
+      {mode === 'register' && registrationStep === 'username' && (
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setMode('login')}
+          className="text-cyan-400 hover:text-cyan-300 transition-colors"
+        >
+          Already have an account? Login here
+        </motion.button>
+      )}
+    </div>
+  );
 
   return (
     <div className="relative w-full h-screen bg-black flex items-center justify-center overflow-hidden">
@@ -53,75 +600,71 @@ export const AuthenticationScreen: React.FC = () => {
         ))}
       </div>
 
-      {/* Authentication Panel */}
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.8 }}
-        className="relative z-10 bg-gray-900 bg-opacity-80 backdrop-blur-xl rounded-3xl border border-cyan-500 border-opacity-30 p-8 max-w-md w-full mx-4"
-      >
-        <div className="text-center mb-8">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
-            className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/50"
-          >
-            <Zap className="w-10 h-10 text-white" />
-          </motion.div>
-          
-          <h1 className="text-3xl font-bold text-cyan-400 mb-2">J.A.R.V.I.S</h1>
-          <p className="text-cyan-300 text-sm">Biometric Authentication Required</p>
-        </div>
-
-        {!isAuthenticating ? (
-          <div className="space-y-4">
-            <motion.button
-              initial={{ x: -50, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              onClick={() => handleAuthenticate('face')}
-              className="w-full p-4 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium flex items-center justify-center space-x-3 transition-all duration-200 shadow-lg hover:shadow-xl"
-            >
-              <Eye className="w-5 h-5" />
-              <span>Face Recognition</span>
-            </motion.button>
-
-            <motion.button
-              initial={{ x: 50, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.6 }}
-              onClick={() => handleAuthenticate('voice')}
-              className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium flex items-center justify-center space-x-3 transition-all duration-200 shadow-lg hover:shadow-xl"
-            >
-              <Mic className="w-5 h-5" />
-              <span>Voice Recognition</span>
-            </motion.button>
-          </div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-8"
-          >
+      {/* Main Content */}
+      <div className="relative z-10 w-full max-w-2xl mx-auto px-8">
+        <AnimatePresence mode="wait">
+          {mode === 'login' ? (
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-              className="w-16 h-16 mx-auto mb-4 rounded-full border-4 border-cyan-500 border-t-transparent"
-            />
-            <p className="text-cyan-300">
-              {authMethod === 'face' ? 'Scanning facial features...' : 'Analyzing voice pattern...'}
-            </p>
-          </motion.div>
-        )}
+              key="login"
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              transition={{ duration: 0.5 }}
+            >
+              {renderLoginMode()}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="register"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+              transition={{ duration: 0.5 }}
+            >
+              {renderRegistrationMode()}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="mt-8 pt-6 border-t border-gray-700">
-          <div className="flex items-center justify-center space-x-2 text-gray-400 text-sm">
-            <Shield className="w-4 h-4" />
-            <span>Secured by quantum encryption</span>
-          </div>
+        {/* Error/Success Messages */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mt-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-center"
+            >
+              <div className="flex items-center justify-center space-x-2">
+                <X className="w-5 h-5" />
+                <span>{error}</span>
+              </div>
+            </motion.div>
+          )}
+          
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mt-6 p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-300 text-center"
+            >
+              <div className="flex items-center justify-center space-x-2">
+                <Check className="w-5 h-5" />
+                <span>{success}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* System Status */}
+      <div className="absolute bottom-4 right-4 text-xs text-gray-400">
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+          <span>J.A.R.V.I.S System Online</span>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };

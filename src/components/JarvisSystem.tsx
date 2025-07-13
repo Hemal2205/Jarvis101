@@ -9,6 +9,7 @@ import { MemoryVault } from './MemoryVault/MemoryVault';
 import { CopyEngine } from './CopyEngine/CopyEngine';
 import { EvolutionPanel } from './Evolution/EvolutionPanel';
 import { StealthOverlay } from './Stealth/StealthOverlay';
+import EnhancedStealthOverlay from './Stealth/EnhancedStealthOverlay';
 import { StatusBar } from './StatusBar/StatusBar';
 import SystemAutomation from './SystemAutomation/SystemAutomation';
 
@@ -66,7 +67,15 @@ export const JarvisSystem: React.FC = () => {
         onOpenSystemAutomation={() => setShowSystemAutomation(true)}
       />
 
-      {/* Stealth Overlay for Interview/Exam Modes */}
+      {/* Enhanced Stealth Overlay for Interview/Exam/Copilot Modes */}
+      {(state.mode === 'stealth-interview' || state.mode === 'stealth-exam' || state.mode === 'passive-copilot') && (
+        <EnhancedStealthOverlay 
+          mode={state.mode as 'stealth-exam' | 'stealth-interview' | 'passive-copilot'} 
+          isActive={true}
+        />
+      )}
+      
+      {/* Fallback Stealth Overlay */}
       {(state.mode === 'stealth-interview' || state.mode === 'stealth-exam') && (
         <StealthOverlay mode={state.mode} />
       )}

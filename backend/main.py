@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 try:
     from core.enhanced_brain import enhanced_brain
     from core.system_automation import system_automation
+    from core.stealth_system import stealth_system
     ENHANCED_MODE = True
     logger.info("Enhanced J.A.R.V.I.S modules loaded successfully")
 except ImportError as e:
@@ -68,6 +69,42 @@ except ImportError as e:
     
     enhanced_brain = PlaceholderBrain()
     system_automation = PlaceholderAutomation()
+    
+    class PlaceholderStealth:
+        async def activate_mode(self, mode):
+            return {"mode": mode, "status": "activated"}
+        
+        async def activate_exam_mode(self):
+            return {
+                "status": "success",
+                "mode": "exam",
+                "message": "Stealth exam mode activated (placeholder)",
+                "features": ["Screen monitoring", "Answer generation", "Proctoring bypass"]
+            }
+        
+        async def activate_interview_mode(self):
+            return {
+                "status": "success", 
+                "mode": "interview",
+                "message": "Stealth interview mode activated (placeholder)",
+                "features": ["Speech recognition", "Response suggestions", "Confidence boosting"]
+            }
+        
+        async def activate_passive_copilot(self):
+            return {
+                "status": "success",
+                "mode": "copilot", 
+                "message": "Passive copilot mode activated (placeholder)",
+                "features": ["Email assistance", "Code completion", "Task automation"]
+            }
+        
+        async def get_current_answers(self):
+            return []
+        
+        async def deactivate(self):
+            return {"status": "deactivated"}
+    
+    stealth_system = PlaceholderStealth()
 
 class PlaceholderSecurity:
     async def authenticate(self, credentials):
@@ -90,9 +127,7 @@ class PlaceholderCopyEngine:
     async def create_copy(self, config):
         return {"id": "demo", "status": "created"}
 
-class PlaceholderStealth:
-    async def activate_mode(self, mode):
-        return {"mode": mode, "status": "activated"}
+
 
 class PlaceholderEvolution:
     async def initialize(self):
@@ -111,6 +146,13 @@ memory_vault = PlaceholderMemory()
 copy_engine = PlaceholderCopyEngine()
 stealth_system = PlaceholderStealth()
 evolution_engine = PlaceholderEvolution()
+
+# Override with enhanced modules if available
+if ENHANCED_MODE:
+    try:
+        from core.stealth_system import stealth_system
+    except ImportError:
+        pass
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -263,7 +305,35 @@ async def create_copy(copy_config: dict):
 @app.post("/api/stealth/activate")
 async def activate_stealth(mode: dict):
     try:
-        result = await stealth_system.activate_mode(mode)
+        mode_type = mode.get("mode", "exam")
+        
+        if mode_type == "exam":
+            result = await stealth_system.activate_exam_mode()
+        elif mode_type == "interview":
+            result = await stealth_system.activate_interview_mode()
+        elif mode_type == "copilot":
+            result = await stealth_system.activate_passive_copilot()
+        else:
+            result = await stealth_system.activate_mode(mode)
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stealth/answers")
+async def get_stealth_answers():
+    """Get current answers from stealth system"""
+    try:
+        answers = await stealth_system.get_current_answers()
+        return {"answers": answers}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/stealth/deactivate")
+async def deactivate_stealth():
+    """Deactivate stealth mode"""
+    try:
+        result = await stealth_system.deactivate()
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

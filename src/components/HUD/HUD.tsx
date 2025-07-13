@@ -5,15 +5,16 @@ import { ModeToggle } from './ModeToggle';
 import { SystemPanel } from './SystemPanel';
 import { CommandInterface } from './CommandInterface';
 import { BrainStatus } from './BrainStatus';
-import { Database, Copy, Settings, Mic, Eye, Shield, Zap, Brain } from 'lucide-react';
+import { Database, Copy, Settings, Mic, Eye, Shield, Zap, Brain, Terminal } from 'lucide-react';
 
 interface HUDProps {
   onOpenMemoryVault: () => void;
   onOpenCopyEngine: () => void;
   onOpenEvolution: () => void;
+  onOpenSystemAutomation: () => void;
 }
 
-export const HUD: React.FC<HUDProps> = ({ onOpenMemoryVault, onOpenCopyEngine, onOpenEvolution }) => {
+export const HUD: React.FC<HUDProps> = ({ onOpenMemoryVault, onOpenCopyEngine, onOpenEvolution, onOpenSystemAutomation }) => {
   const { state, setMode } = useJarvis();
 
   const modeConfigs = [
@@ -71,6 +72,13 @@ export const HUD: React.FC<HUDProps> = ({ onOpenMemoryVault, onOpenCopyEngine, o
           </div>
 
           <div className="flex items-center space-x-4">
+            <button
+              onClick={onOpenSystemAutomation}
+              className="p-2 rounded-lg bg-cyan-900 bg-opacity-50 hover:bg-opacity-70 transition-all duration-200 border border-cyan-500 border-opacity-30"
+              title="System Automation"
+            >
+              <Terminal className="w-5 h-5 text-cyan-400" />
+            </button>
             <button
               onClick={onOpenMemoryVault}
               className="p-2 rounded-lg bg-cyan-900 bg-opacity-50 hover:bg-opacity-70 transition-all duration-200 border border-cyan-500 border-opacity-30"

@@ -9,13 +9,16 @@ import { MemoryVault } from './MemoryVault/MemoryVault';
 import { CopyEngine } from './CopyEngine/CopyEngine';
 import { EvolutionPanel } from './Evolution/EvolutionPanel';
 import { StealthOverlay } from './Stealth/StealthOverlay';
+import EnhancedStealthOverlay from './Stealth/EnhancedStealthOverlay';
 import { StatusBar } from './StatusBar/StatusBar';
+import SystemAutomation from './SystemAutomation/SystemAutomation';
 
 export const JarvisSystem: React.FC = () => {
   const { state } = useJarvis();
   const [showMemoryVault, setShowMemoryVault] = useState(false);
   const [showCopyEngine, setShowCopyEngine] = useState(false);
   const [showEvolution, setShowEvolution] = useState(false);
+  const [showSystemAutomation, setShowSystemAutomation] = useState(false);
 
   useEffect(() => {
     // Initialize system startup sequence
@@ -61,9 +64,18 @@ export const JarvisSystem: React.FC = () => {
         onOpenMemoryVault={() => setShowMemoryVault(true)}
         onOpenCopyEngine={() => setShowCopyEngine(true)}
         onOpenEvolution={() => setShowEvolution(true)}
+        onOpenSystemAutomation={() => setShowSystemAutomation(true)}
       />
 
-      {/* Stealth Overlay for Interview/Exam Modes */}
+      {/* Enhanced Stealth Overlay for Interview/Exam/Copilot Modes */}
+      {(state.mode === 'stealth-interview' || state.mode === 'stealth-exam' || state.mode === 'passive-copilot') && (
+        <EnhancedStealthOverlay 
+          mode={state.mode as 'stealth-exam' | 'stealth-interview' | 'passive-copilot'} 
+          isActive={true}
+        />
+      )}
+      
+      {/* Fallback Stealth Overlay */}
       {(state.mode === 'stealth-interview' || state.mode === 'stealth-exam') && (
         <StealthOverlay mode={state.mode} />
       )}
@@ -106,6 +118,33 @@ export const JarvisSystem: React.FC = () => {
             className="fixed inset-0 z-50 bg-black bg-opacity-80 flex items-center justify-center p-4"
           >
             <EvolutionPanel onClose={() => setShowEvolution(false)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* System Automation Modal */}
+      <AnimatePresence>
+        {showSystemAutomation && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black bg-opacity-80 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-6xl h-5/6 relative"
+            >
+              <button
+                onClick={() => setShowSystemAutomation(false)}
+                className="absolute top-4 right-4 z-10 p-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded hover:bg-red-500/30 transition-colors"
+              >
+                ✕
+              </button>
+              <SystemAutomation isActive={showSystemAutomation} />
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

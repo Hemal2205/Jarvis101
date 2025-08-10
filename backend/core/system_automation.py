@@ -17,7 +17,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
-import pyautogui
 import psutil
 import requests
 import boto3
@@ -41,10 +40,14 @@ class SystemAutomation:
     
     def setup_automation(self):
         """Initialize automation tools"""
-        # Setup PyAutoGUI
-        pyautogui.FAILSAFE = True
-        pyautogui.PAUSE = 0.5
-        
+        try:
+            import pyautogui
+            # Setup PyAutoGUI
+            pyautogui.FAILSAFE = True
+            pyautogui.PAUSE = 0.5
+        except Exception as e:
+            logger.warning(f"Could not initialize PyAutoGUI: {e}")
+
         # Setup Chrome options for automation
         self.chrome_options = Options()
         self.chrome_options.add_argument("--no-sandbox")
@@ -509,6 +512,7 @@ def store_results(s3_client, insights):
     async def execute_desktop_action(self, action: str) -> Dict[str, Any]:
         """Execute desktop actions using PyAutoGUI"""
         try:
+            import pyautogui
             if action.startswith("click"):
                 # Parse click coordinates or element
                 coords = self.parse_click_coordinates(action)
@@ -535,9 +539,15 @@ def store_results(s3_client, insights):
     
     def parse_click_coordinates(self, action: str) -> tuple:
         """Parse click coordinates from action string"""
-        # Default center of screen
-        screen_width, screen_height = pyautogui.size()
-        return (screen_width // 2, screen_height // 2)
+        try:
+            import pyautogui
+            # Default center of screen
+            screen_width, screen_height = pyautogui.size()
+            return (screen_width // 2, screen_height // 2)
+        except Exception as e:
+            logger.warning(f"Could not get screen size from PyAutoGUI: {e}")
+            # Return a default size if pyautogui fails
+            return (1920 // 2, 1080 // 2)
     
     def is_application_running(self, app_name: str) -> bool:
         """Check if application is running"""

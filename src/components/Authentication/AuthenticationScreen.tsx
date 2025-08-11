@@ -65,32 +65,80 @@ export const AuthenticationScreen: React.FC = () => {
     setIsAuthenticating(true);
     setAuthMethod(method);
     setError(null);
-    
+    setSuccess(null);
+
     try {
-      let result;
-      
       if (method === 'face') {
-        const imageData = await captureImage();
-        if (!imageData) {
-          setError('Failed to capture image');
-          return;
-        }
-        result = await authenticateWithFace(imageData);
+        await handleFaceAuth();
       } else {
-        // Voice authentication would be implemented here
-        result = await authenticate(method);
-      }
-      
-      if (!result || !result.success) {
-        setError(result?.message || 'Authentication failed. Please try again.');
+        await handleVoiceAuth();
       }
     } catch (error) {
       console.error('Authentication error:', error);
-      setError('Authentication error. Please try again.');
+      setError('An unexpected error occurred during authentication.');
     } finally {
       setIsAuthenticating(false);
       setAuthMethod(null);
     }
+  };
+
+  const handleFaceAuth = async () => {
+    await initializeCamera();
+    // Give camera time to initialize
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    const imageData = await captureImage();
+    if (!imageData) {
+      setError('Failed to capture image');
+      return;
+    }
+    const result = await authenticateWithFace(imageData);
+    if (result && result.success) {
+      setSuccess(result.message || 'Authentication successful!');
+      authenticate(result.user, result.session_id);
+    } else {
+      setError(result?.message || 'Authentication failed. Please try again.');
+    }
+  };
+
+  const handleVoiceAuth = async () => {
+    await initializeMicrophone();
+
+    if (!mediaRecorderRef.current) {
+      setError("Could not initialize microphone for authentication.");
+      return;
+    }
+
+    const chunks: BlobPart[] = [];
+    const recorder = mediaRecorderRef.current;
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+
+    recorder.onstop = async () => {
+      const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+      const result = await authenticateWithVoice(audioBlob);
+      if (result && result.success) {
+        setSuccess(result.message || 'Authentication successful!');
+        authenticate(result.user, result.session_id);
+      } else {
+        setError(result?.message || 'Authentication failed. Please try again.');
+      }
+      setIsRecording(false);
+    };
+
+    recorder.start();
+    setIsRecording(true);
+
+    // Record for 3 seconds then stop
+    setTimeout(() => {
+      if (recorder.state === "recording") {
+        recorder.stop();
+      }
+    }, 3000);
   };
 
   const startRegistration = async () => {
@@ -307,6 +355,18 @@ export const AuthenticationScreen: React.FC = () => {
     formData.append('image', imageBlob);
 
     const response = await fetch('/api/authenticate/face', {
+      method: 'POST',
+      body: formData
+    });
+
+    return await response.json();
+  };
+
+  const authenticateWithVoice = async (audioBlob: Blob) => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob);
+
+    const response = await fetch('/api/authenticate/voice', {
       method: 'POST',
       body: formData
     });
@@ -575,6 +635,10 @@ export const AuthenticationScreen: React.FC = () => {
 
   return (
     <div className="relative w-full h-screen bg-black flex items-center justify-center overflow-hidden">
+      {/* Hidden elements for media capture */}
+      <video ref={videoRef} autoPlay playsInline muted className="hidden" />
+      <canvas ref={canvasRef} className="hidden" />
+
       {/* Animated Background */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-black to-cyan-900 opacity-50" />
       

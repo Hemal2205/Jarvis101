@@ -303,7 +303,7 @@ class SecurityManager:
                     continue
                 
                 # Compare with all stored encodings for this user
-                matches = face_recognition.compare_faces(stored_encodings, current_encoding, tolerance=0.5)
+                matches = face_recognition.compare_faces(stored_encodings, current_encoding, tolerance=0.6)
                 
                 if any(matches):
                     # Authentication successful

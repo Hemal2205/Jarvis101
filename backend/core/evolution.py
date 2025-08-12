@@ -7,6 +7,8 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import hashlib
 import subprocess
+from core.evolution_log_manager import EvolutionLogManager
+from core.db import get_db
 
 class EvolutionEngine:
     """Autonomous system evolution and improvement"""
@@ -21,6 +23,13 @@ class EvolutionEngine:
         self.auto_evolution_enabled = True
         self.evolution_interval = 3600  # 1 hour
         self._evolution_task = None
+        self.evolution_log_manager = EvolutionLogManager()
+        self.progress = {
+            "status": "idle",
+            "step": "",
+            "percent": 0,
+            "error": None
+        }
         
         # Ensure directories exist
         os.makedirs(self.evolution_dir, exist_ok=True)
@@ -42,24 +51,37 @@ class EvolutionEngine:
     async def trigger_evolution(self) -> Dict[str, Any]:
         """Manually trigger system evolution"""
         try:
+            self.progress = {"status": "running", "step": "Creating snapshot", "percent": 10, "error": None}
             # Create system snapshot before evolution
             snapshot_id = await self._create_snapshot()
-            
+            self.progress = {"status": "running", "step": "Analyzing performance", "percent": 25, "error": None}
             # Analyze current performance
             metrics = await self._analyze_performance()
-            
+            self.progress = {"status": "running", "step": "Generating improvements", "percent": 40, "error": None}
             # Generate improvement suggestions
             suggestions = await self._generate_improvements(metrics)
-            
+            self.progress = {"status": "running", "step": "Applying improvements", "percent": 60, "error": None}
             # Apply safe improvements
             applied_improvements = await self._apply_improvements(suggestions)
-            
+            self.progress = {"status": "running", "step": "Testing stability", "percent": 80, "error": None}
             # Test system stability
             stability_test = await self._test_system_stability()
             
             if not stability_test["stable"]:
+                self.progress = {"status": "rollback", "step": "Rolling back changes", "percent": 90, "error": "System unstable, rolling back"}
                 # Rollback if unstable
                 await self._rollback_to_snapshot(snapshot_id)
+                # Log failed evolution to SQL
+                for db in get_db():
+                    self.evolution_log_manager.create_log(
+                        db,
+                        version=datetime.now().strftime("%Y%m%d%H%M%S"),
+                        description="Manual evolution (rollback)",
+                        changes={"improvements": applied_improvements, "error": "System unstable, rolled back"},
+                        status="failed"
+                    )
+                    break
+                self.progress = {"status": "failed", "step": "Rollback complete", "percent": 100, "error": "System became unstable, rolled back changes"}
                 return {
                     "success": False,
                     "error": "System became unstable, rolled back changes",
@@ -79,7 +101,17 @@ class EvolutionEngine:
             
             self.evolution_history.append(evolution_record)
             await self._save_evolution_history()
-            
+            # Log successful evolution to SQL
+            for db in get_db():
+                self.evolution_log_manager.create_log(
+                    db,
+                    version=datetime.now().strftime("%Y%m%d%H%M%S"),
+                    description="Manual evolution",
+                    changes={"improvements": applied_improvements, "metrics": metrics},
+                    status="success"
+                )
+                break
+            self.progress = {"status": "success", "step": "Evolution complete", "percent": 100, "error": None}
             return {
                 "success": True,
                 "evolution_id": evolution_record["id"],
@@ -88,6 +120,17 @@ class EvolutionEngine:
             }
             
         except Exception as e:
+            # Log failed evolution to SQL
+            for db in get_db():
+                self.evolution_log_manager.create_log(
+                    db,
+                    version=datetime.now().strftime("%Y%m%d%H%M%S"),
+                    description="Manual evolution (exception)",
+                    changes={"error": str(e)},
+                    status="failed"
+                )
+                break
+            self.progress = {"status": "failed", "step": "Exception", "percent": 100, "error": str(e)}
             return {"success": False, "error": str(e)}
     
     async def _autonomous_evolution_loop(self):
@@ -122,20 +165,34 @@ class EvolutionEngine:
     async def _autonomous_evolution(self):
         """Perform autonomous evolution"""
         try:
+            self.progress = {"status": "running", "step": "Creating snapshot", "percent": 10, "error": None}
             # Create snapshot
             snapshot_id = await self._create_snapshot()
-            
+            self.progress = {"status": "running", "step": "Analyzing performance", "percent": 25, "error": None}
             # Analyze and improve
             metrics = await self._analyze_performance()
+            self.progress = {"status": "running", "step": "Generating improvements", "percent": 40, "error": None}
             suggestions = await self._generate_improvements(metrics)
-            
+            self.progress = {"status": "running", "step": "Applying improvements", "percent": 60, "error": None}
             # Apply only safe, tested improvements
             safe_improvements = [s for s in suggestions if s.get("safety_level", 0) >= 0.9]
             applied_improvements = await self._apply_improvements(safe_improvements[:3])  # Max 3 per cycle
-            
+            self.progress = {"status": "running", "step": "Testing stability", "percent": 80, "error": None}
             # Test stability
             if not (await self._test_system_stability())["stable"]:
+                self.progress = {"status": "rollback", "step": "Rolling back changes", "percent": 90, "error": "System unstable, rolling back"}
                 await self._rollback_to_snapshot(snapshot_id)
+                # Log failed auto evolution to SQL
+                for db in get_db():
+                    self.evolution_log_manager.create_log(
+                        db,
+                        version=datetime.now().strftime("%Y%m%d%H%M%S"),
+                        description="Autonomous evolution (rollback)",
+                        changes={"improvements": applied_improvements, "error": "System unstable, rolled back"},
+                        status="failed"
+                    )
+                    break
+                self.progress = {"status": "failed", "step": "Rollback complete", "percent": 100, "error": "System became unstable, rolled back changes"}
                 return
             
             # Record evolution
@@ -150,8 +207,29 @@ class EvolutionEngine:
             
             self.evolution_history.append(evolution_record)
             await self._save_evolution_history()
-            
+            # Log successful auto evolution to SQL
+            for db in get_db():
+                self.evolution_log_manager.create_log(
+                    db,
+                    version=datetime.now().strftime("%Y%m%d%H%M%S"),
+                    description="Autonomous evolution",
+                    changes={"improvements": applied_improvements, "metrics": metrics},
+                    status="success"
+                )
+                break
+            self.progress = {"status": "success", "step": "Evolution complete", "percent": 100, "error": None}
         except Exception as e:
+            # Log failed auto evolution to SQL
+            for db in get_db():
+                self.evolution_log_manager.create_log(
+                    db,
+                    version=datetime.now().strftime("%Y%m%d%H%M%S"),
+                    description="Autonomous evolution (exception)",
+                    changes={"error": str(e)},
+                    status="failed"
+                )
+                break
+            self.progress = {"status": "failed", "step": "Exception", "percent": 100, "error": str(e)}
             print(f"Autonomous evolution failed: {e}")
     
     async def _analyze_performance(self) -> Dict[str, Any]:
@@ -473,6 +551,9 @@ class EvolutionEngine:
             "snapshots_available": len(os.listdir(self.snapshots_dir)) if os.path.exists(self.snapshots_dir) else 0,
             "performance_trend": self._calculate_performance_trend()
         }
+    
+    def get_progress(self) -> dict:
+        return self.progress
     
     def _calculate_performance_trend(self) -> str:
         """Calculate performance trend over time"""

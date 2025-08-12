@@ -1,0 +1,16 @@
+{
+  "status": "commited",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:5173",
+  "executionArgs": {
+    "projectName": "Jarvis101",
+    "projectPath": "c:/Users/hemal/Desktop/JARVIS/jar/Jarvis101",
+    "testIds": [],
+    "additionalInstruction": "",
+    "envs": {
+      "API_KEY": "sk-user-sZQVRJNedli6_Qo8nXhpypKazE2byz7zI3arFF-uyj0ULV2ycmZOuKvXj5vaDCFXJxeQbqRV6vHE7F_1a7AjMa9rfsf7TTuZn8RLEARoubn-L4k3T8FaYcNt-aLMAnUTlWM"
+    }
+  },
+  "proxy": "http://5fd8ab86-d7bd-4f40-825e-f521a93753e7:pC856EFYtXYY1f89nqNRh9hhEpxRIo5g@tun.testsprite.com:8080"
+}

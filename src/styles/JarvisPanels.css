@@ -1,0 +1,259 @@
+/* JARVIS Panel Styles - Futuristic Glassmorphism */
+
+.jarvis-panel {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 
+    0 8px 32px rgba(0, 255, 255, 0.1),
+    0 0 0 1px rgba(0, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.jarvis-panel:hover {
+  box-shadow: 
+    0 12px 40px rgba(0, 255, 255, 0.15),
+    0 0 0 1px rgba(0, 255, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.panel-background {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.panel-glass {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 255, 255, 0.1) 0%,
+    rgba(0, 150, 255, 0.05) 50%,
+    rgba(0, 100, 255, 0.1) 100%
+  );
+  border-radius: 12px;
+}
+
+.panel-glow {
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(0, 255, 255, 0.1) 50%,
+    transparent 70%
+  );
+  border-radius: 14px;
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
+.panel-content {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 255, 255, 0.1) 0%,
+    rgba(0, 150, 255, 0.05) 100%
+  );
+  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+  cursor: grab;
+  user-select: none;
+}
+
+.panel-header:active {
+  cursor: grabbing;
+}
+
+.panel-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: #00ffff;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+.title-glow {
+  position: absolute;
+  inset: -4px;
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 255, 255, 0.3) 0%,
+    transparent 70%
+  );
+  border-radius: 8px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.panel-title:hover .title-glow {
+  opacity: 1;
+}
+
+.panel-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.control-btn {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0, 255, 255, 0.1);
+  color: #00ffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.control-btn:hover {
+  background: rgba(0, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+.control-btn:active {
+  transform: scale(0.95);
+}
+
+.btn-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 255, 255, 0.4) 0%,
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.control-btn:hover .btn-glow {
+  opacity: 1;
+}
+
+.minimize-btn {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+}
+
+.minimize-btn:hover {
+  background: rgba(255, 193, 7, 0.2);
+}
+
+.close-btn {
+  background: rgba(255, 107, 107, 0.1);
+  color: #ff6b6b;
+}
+
+.close-btn:hover {
+  background: rgba(255, 107, 107, 0.2);
+}
+
+.panel-body {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+  background: rgba(0, 20, 40, 0.3);
+  transition: all 0.3s ease;
+}
+
+.panel-body.minimized {
+  display: none;
+}
+
+/* Animations */
+@keyframes glowPulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.02);
+  }
+}
+
+/* Scrollbar styling for panels */
+.panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-body::-webkit-scrollbar-track {
+  background: rgba(0, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 255, 255, 0.3) 0%,
+    rgba(0, 150, 255, 0.3) 100%
+  );
+  border-radius: 3px;
+}
+
+.panel-body::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 255, 255, 0.5) 0%,
+    rgba(0, 150, 255, 0.5) 100%
+  );
+}
+
+/* JARVIS-specific panel variants */
+.jarvis-panel.hud-panel {
+  background: rgba(0, 30, 60, 0.8);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+}
+
+.jarvis-panel.dashboard-panel {
+  background: rgba(0, 20, 40, 0.9);
+  border: 1px solid rgba(0, 150, 255, 0.3);
+}
+
+.jarvis-panel.modal-panel {
+  background: rgba(0, 10, 20, 0.95);
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  box-shadow: 
+    0 20px 60px rgba(0, 255, 255, 0.2),
+    0 0 0 1px rgba(0, 255, 255, 0.3);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .jarvis-panel {
+    min-width: 280px !important;
+    min-height: 180px !important;
+  }
+  
+  .panel-header {
+    padding: 8px 12px;
+  }
+  
+  .panel-body {
+    padding: 12px;
+  }
+} 

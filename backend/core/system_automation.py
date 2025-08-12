@@ -22,10 +22,284 @@ import psutil
 import requests
 import boto3
 from pathlib import Path
+import pygetwindow as gw
+import pyautogui
+import threading
+import time
+from typing import Dict, Any, List
+from .calendar_integration import CalendarIntegration
+from core.models import UserSettings, User
+from core.db import get_db
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+calendar_integration = CalendarIntegration()
+
+class AgentModeManager:
+    def __init__(self):
+        self._user_active = defaultdict(bool)
+        self._user_lock = defaultdict(threading.Lock)
+        self._user_last_context = defaultdict(dict)
+        self._user_monitor_thread = {}
+        self._user_suggestions = defaultdict(list)
+        self._user_last_triggered = defaultdict(set)
+        self._user_last_meeting_ids = defaultdict(set)
+        # New: Track idle time, focus/break state, last suggestion times
+        self._user_last_activity = defaultdict(lambda: time.time())
+        self._user_focus_state = defaultdict(lambda: None)  # None, 'focus', 'break'
+        self._user_focus_start = defaultdict(lambda: None)
+        self._user_break_start = defaultdict(lambda: None)
+        self._user_last_suggestion_time = defaultdict(lambda: 0)
+        self._user_goal_set = defaultdict(lambda: False)
+
+    def set_agent_mode(self, active: bool, username: str = 'Hemal'):
+        with self._user_lock[username]:
+            self._user_active[username] = active
+        if active and (username not in self._user_monitor_thread or not self._user_monitor_thread[username].is_alive()):
+            t = threading.Thread(target=self._monitor_loop, args=(username,), daemon=True)
+            self._user_monitor_thread[username] = t
+            t.start()
+
+    def is_agent_mode_active(self, username: str = 'Hemal') -> bool:
+        with self._user_lock[username]:
+            return self._user_active[username]
+
+    def get_screen_context(self, username: str = 'Hemal') -> Dict[str, Any]:
+        with self._user_lock[username]:
+            return self._user_last_context[username].copy()
+
+    def get_suggestions(self, username: str = 'Hemal') -> List[Dict[str, Any]]:
+        with self._user_lock[username]:
+            suggestions = self._user_suggestions[username].copy()
+            self._user_suggestions[username].clear()
+            return suggestions
+
+    def _monitor_loop(self, username: str):
+        import contextlib
+        calendar_check_counter = 0
+        idle_threshold = 10 * 60  # 10 minutes
+        focus_block_length = 25 * 60  # 25 minutes
+        break_length = 5 * 60  # 5 minutes
+        suggestion_cooldown = 5 * 60  # 5 minutes between same suggestion
+        while self.is_agent_mode_active(username):
+            try:
+                # Fetch user settings
+                with contextlib.closing(next(get_db())) as db:
+                    user = db.query(User).filter_by(username=username).first()
+                    settings = db.query(UserSettings).filter_by(user_id=user.id).first() if user else None
+                    enable_meeting_reminders = settings.enable_meeting_reminders if settings else True
+                    enable_app_suggestions = settings.enable_app_suggestions if settings else True
+                windows = gw.getAllTitles()
+                active_window = gw.getActiveWindow()
+                context = {
+                    "window_titles": windows,
+                    "active_window": active_window.title if active_window else None,
+                }
+                with self._user_lock[username]:
+                    self._user_last_context[username] = context
+                # --- Idle time detection ---
+                idle_time = self._get_idle_time()
+                now = time.time()
+                if idle_time > idle_threshold and now - self._user_last_suggestion_time[(username, 'idle')] > suggestion_cooldown:
+                    suggestion = {
+                        "message": "You've been idle for a while. Would you like to take a break or start a focus block?",
+                        "action": {
+                            "label": "Start Focus Block",
+                            "endpoint": "/api/user/focus/start",
+                            "payload": {"username": username}
+                        }
+                    }
+                    with self._user_lock[username]:
+                        self._user_suggestions[username].append(suggestion)
+                    self._user_last_suggestion_time[(username, 'idle')] = now
+                # --- Focus block logic ---
+                focus_state = self._user_focus_state[username]
+                if focus_state == 'focus':
+                    elapsed = now - (self._user_focus_start[username] or now)
+                    if elapsed > focus_block_length and now - self._user_last_suggestion_time[(username, 'focus_end')] > suggestion_cooldown:
+                        suggestion = {
+                            "message": "Focus block complete! Would you like to take a break?",
+                            "action": {
+                                "label": "Start Break",
+                                "endpoint": "/api/user/break/start",
+                                "payload": {"username": username}
+                            }
+                        }
+                        with self._user_lock[username]:
+                            self._user_suggestions[username].append(suggestion)
+                        self._user_last_suggestion_time[(username, 'focus_end')] = now
+                elif focus_state == 'break':
+                    elapsed = now - (self._user_break_start[username] or now)
+                    if elapsed > break_length and now - self._user_last_suggestion_time[(username, 'break_end')] > suggestion_cooldown:
+                        suggestion = {
+                            "message": "Break is over! Ready to start another focus block?",
+                            "action": {
+                                "label": "Start Focus Block",
+                                "endpoint": "/api/user/focus/start",
+                                "payload": {"username": username}
+                            }
+                        }
+                        with self._user_lock[username]:
+                            self._user_suggestions[username].append(suggestion)
+                        self._user_last_suggestion_time[(username, 'break_end')] = now
+                # --- System status suggestions ---
+                cpu = psutil.cpu_percent()
+                mem = psutil.virtual_memory().percent
+                if (cpu > 90 or mem > 90) and now - self._user_last_suggestion_time[(username, 'system_status')] > suggestion_cooldown:
+                    suggestion = {
+                        "message": f"System resources are high (CPU: {cpu}%, Memory: {mem}%). Consider closing unused apps.",
+                        "action": None
+                    }
+                    with self._user_lock[username]:
+                        self._user_suggestions[username].append(suggestion)
+                    self._user_last_suggestion_time[(username, 'system_status')] = now
+                # --- Daily goal reminder ---
+                if not self._user_goal_set[username] and now - self._user_last_suggestion_time[(username, 'goal')] > suggestion_cooldown:
+                    suggestion = {
+                        "message": "Set your daily goal to stay focused!",
+                        "action": {
+                            "label": "Set Goal",
+                            "endpoint": "/api/user/goal/set",
+                            "payload": {"username": username}
+                        }
+                    }
+                    with self._user_lock[username]:
+                        self._user_suggestions[username].append(suggestion)
+                    self._user_last_suggestion_time[(username, 'goal')] = now
+                # --- Existing app and meeting triggers ---
+                if enable_app_suggestions:
+                    triggers = [
+                        ("VS Code", {
+                            "message": "You opened VS Code. Would you like to open your project files?",
+                            "action": {
+                                "label": "Open Project",
+                                "endpoint": "/api/command",
+                                "payload": {"text": "Open my main project in VS Code"}
+                            }
+                        }),
+                        ("Chrome", {
+                            "message": "You opened Chrome. Need help navigating to a site or logging in?",
+                            "action": {
+                                "label": "Go to AWS Console",
+                                "endpoint": "/api/command",
+                                "payload": {"text": "Open AWS Console in Chrome"}
+                            }
+                        }),
+                        ("Word", {
+                            "message": "You opened Word. Want to open a recent document or start a new one?",
+                            "action": None
+                        }),
+                        ("PowerPoint", {
+                            "message": "You opened PowerPoint. Need help with your presentation?",
+                            "action": None
+                        }),
+                        ("Excel", {
+                            "message": "You opened Excel. Would you like to open your budget spreadsheet?",
+                            "action": {
+                                "label": "Open Budget Sheet",
+                                "endpoint": "/api/command",
+                                "payload": {"text": "Open budget.xlsx in Excel"}
+                            }
+                        }),
+                        ("Slack", {
+                            "message": "You opened Slack. Would you like to check unread messages?",
+                            "action": {
+                                "label": "Check Unread",
+                                "endpoint": "/api/command",
+                                "payload": {"text": "Show unread messages in Slack"}
+                            }
+                        }),
+                        ("Zoom", {
+                            "message": "You opened Zoom. Would you like to join your next meeting?",
+                            "action": {
+                                "label": "Join Meeting",
+                                "endpoint": "/api/command",
+                                "payload": {"text": "Join next Zoom meeting"}
+                            }
+                        }),
+                        ("Outlook", {
+                            "message": "You opened Outlook. Would you like to check your inbox or compose a new email?",
+                            "action": {
+                                "label": "New Email",
+                                "endpoint": "/api/command",
+                                "payload": {"text": "Compose new email in Outlook"}
+                            }
+                        }),
+                        ("Notepad", {
+                            "message": "You opened Notepad. Would you like to open your notes?",
+                            "action": {
+                                "label": "Open Notes",
+                                "endpoint": "/api/command",
+                                "payload": {"text": "Open notes.txt in Notepad"}
+                            }
+                        })
+                    ]
+                    for keyword, suggestion in triggers:
+                        if any(keyword.lower() in (t or '').lower() for t in windows):
+                            if keyword not in self._user_last_triggered[username]:
+                                with self._user_lock[username]:
+                                    self._user_suggestions[username].append(suggestion)
+                                self._user_last_triggered[username].add(keyword)
+                        else:
+                            self._user_last_triggered[username].discard(keyword)
+                # Calendar integration: check every 3 cycles (~6s)
+                calendar_check_counter += 1
+                if enable_meeting_reminders and calendar_check_counter % 3 == 0:
+                    meetings = calendar_integration.get_imminent_meetings(minutes=10)
+                    for meeting in meetings:
+                        meeting_id = f"{meeting.get('summary','')}-{meeting.get('start','')}"
+                        if meeting_id not in self._user_last_meeting_ids[username]:
+                            minutes_left = self._minutes_until(meeting.get('start'))
+                            suggestion = {
+                                "message": f"Your meeting '{meeting.get('summary','(no title)')}' starts in {minutes_left} minutes. Join now?",
+                                "action": {
+                                    "label": "Join Meeting",
+                                    "endpoint": "/api/command",
+                                    "payload": {"text": f"Open meeting link: {meeting.get('link','')}"}
+                                }
+                            }
+                            with self._user_lock[username]:
+                                self._user_suggestions[username].append(suggestion)
+                            self._user_last_meeting_ids[username].add(meeting_id)
+            except Exception as e:
+                with self._user_lock[username]:
+                    self._user_last_context[username] = {"error": str(e)}
+            time.sleep(2)
+
+    def _get_idle_time(self):
+        # Cross-platform idle time detection (simple version)
+        try:
+            if os.name == 'nt':
+                import ctypes
+                class LASTINPUTINFO(ctypes.Structure):
+                    _fields_ = [('cbSize', ctypes.c_uint), ('dwTime', ctypes.c_uint)]
+                lii = LASTINPUTINFO()
+                lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+                if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
+                    millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
+                    return millis / 1000.0
+            # For Linux/Mac, fallback to 0 (could use Xlib or Quartz for real impl)
+            return 0
+        except Exception:
+            return 0
+
+    def _minutes_until(self, start_str):
+        import datetime
+        now = datetime.datetime.utcnow()
+        try:
+            if 'T' in start_str:
+                start_dt = datetime.datetime.fromisoformat(start_str.replace('Z', ''))
+                delta = (start_dt - now).total_seconds() / 60
+                return max(0, int(delta))
+        except Exception:
+            pass
+        return '?'
+
+# Singleton instance
+agent_mode_manager = AgentModeManager()
 
 class SystemAutomation:
     """

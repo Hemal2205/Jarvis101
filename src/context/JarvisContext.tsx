@@ -7,6 +7,7 @@ interface JarvisState {
   isActive: boolean;
   isAuthenticated: boolean;
   currentUser: string;
+  avatarUrl: string;
   systemStatus: {
     brain: boolean;
     security: boolean;
@@ -37,6 +38,10 @@ interface JarvisContextType {
   playMemory: (id: string) => void;
   createCopy: (name: string) => Promise<string>;
   killSwitch: () => void;
+  setCurrentUser: (username: string) => void;
+  login: (username: string) => Promise<void>;
+  logout: () => void;
+  avatarUrl: string;
 }
 
 const JarvisContext = createContext<JarvisContextType | undefined>(undefined);
@@ -54,7 +59,8 @@ export const JarvisProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     mode: 'full',
     isActive: false,
     isAuthenticated: false,
-    currentUser: 'Hemal',
+    currentUser: '',
+    avatarUrl: '',
     systemStatus: {
       brain: true,
       security: true,
@@ -64,6 +70,47 @@ export const JarvisProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     memories: [],
     copies: [],
   });
+
+  // Load user and avatar from localStorage on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('jarvis_user');
+    const savedAvatar = localStorage.getItem('jarvis_avatar');
+    if (savedUser) {
+      setState(prev => ({ ...prev, currentUser: savedUser, isAuthenticated: true, avatarUrl: savedAvatar || '' }));
+    }
+  }, []);
+
+  const fetchAvatar = async (username: string) => {
+    try {
+      const res = await fetch(`/api/user/avatar?username=${encodeURIComponent(username)}`);
+      const data = await res.json();
+      if (data.success && data.avatar_url) {
+        setState(prev => ({ ...prev, avatarUrl: data.avatar_url }));
+        localStorage.setItem('jarvis_avatar', data.avatar_url);
+      }
+    } catch (error) {
+      console.error('Failed to fetch avatar:', error);
+      // Continue without avatar if fetch fails
+    }
+  };
+
+  const setCurrentUser = (username: string) => {
+    setState(prev => ({ ...prev, currentUser: username }));
+    localStorage.setItem('jarvis_user', username);
+    fetchAvatar(username);
+  };
+
+  const login = async (username: string) => {
+    setCurrentUser(username);
+    setState(prev => ({ ...prev, isAuthenticated: true }));
+    await fetchAvatar(username);
+  };
+
+  const logout = () => {
+    setState(prev => ({ ...prev, isAuthenticated: false, currentUser: '', avatarUrl: '' }));
+    localStorage.removeItem('jarvis_user');
+    localStorage.removeItem('jarvis_avatar');
+  };
 
   useEffect(() => {
     // Load initial data when component mounts
@@ -240,6 +287,10 @@ export const JarvisProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     playMemory,
     createCopy,
     killSwitch,
+    setCurrentUser,
+    login,
+    logout,
+    avatarUrl: state.avatarUrl,
   };
 
   return (

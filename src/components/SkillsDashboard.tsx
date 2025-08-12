@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Brain, 
@@ -9,16 +9,15 @@ import {
   Clock, 
   Search, 
   Play, 
-  Pause,
   BarChart3,
   Calendar,
   Star,
   Zap,
-  Users,
-  Filter,
   X
 } from 'lucide-react';
+import { useNotification } from './NotificationContext';
 
+// Define interfaces for dashboard data, skill, and progress
 interface Skill {
   id: string;
   name: string;
@@ -34,8 +33,7 @@ interface Skill {
   session_count: number;
   total_time_spent: number;
   avg_completion_rate: number;
-}
-
+};
 interface SkillsDashboardData {
   skills: Skill[];
   summary: {
@@ -46,18 +44,17 @@ interface SkillsDashboardData {
     total_learning_time: number;
   };
   recommendations: string[];
-}
-
+};
 interface LearningProgress {
   total_skills: number;
   completed_skills: number;
   in_progress_skills: number;
   learning_streak: number;
-  active_session: any;
-  recent_sessions: any[];
+  active_session: unknown;
+  recent_sessions: unknown[];
   skill_categories: Record<string, number>;
   recommendations: string[];
-}
+};  
 
 export const SkillsDashboard: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<SkillsDashboardData | null>(null);
@@ -66,15 +63,37 @@ export const SkillsDashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'name' | 'mastery' | 'recent'>('mastery');
-  const [isLearning, setIsLearning] = useState(false);
-  const [learningTopic, setLearningTopic] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { notify } = useNotification();
+  const shownSkillIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     loadDashboardData();
     loadLearningProgress();
   }, []);
+
+  // Poll for new skills every 10 seconds
+  useEffect(() => {
+    const fetchSkills = async () => {
+      try {
+        const res = await fetch('/api/skills/dashboard');
+        const data = await res.json();
+        setDashboardData(data);
+        (data.skills || []).forEach((s: Skill) => {
+          if (!shownSkillIds.current.has(s.id)) {
+            notify(`New skill learned: ${s.name || s.id}`, 'success');
+            shownSkillIds.current.add(s.id);
+          }
+        });
+      } catch {
+        notify('Failed to fetch skills.', 'error');
+      }
+    };
+    fetchSkills();
+    const interval = window.setInterval(fetchSkills, 10000);
+    return () => window.clearInterval(interval);
+  }, [notify]);
 
   const loadDashboardData = async () => {
     try {
@@ -106,7 +125,6 @@ export const SkillsDashboard: React.FC = () => {
 
   const startLearning = async (topic: string) => {
     try {
-      setIsLearning(true);
       const response = await fetch('/api/skills/learn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -117,7 +135,6 @@ export const SkillsDashboard: React.FC = () => {
       
       const result = await response.json();
       if (result.success) {
-        setLearningTopic(topic);
         await loadDashboardData();
         await loadLearningProgress();
       } else {
@@ -126,8 +143,6 @@ export const SkillsDashboard: React.FC = () => {
     } catch (err) {
       setError('Failed to start learning session');
       console.error(err);
-    } finally {
-      setIsLearning(false);
     }
   };
 
@@ -235,7 +250,7 @@ export const SkillsDashboard: React.FC = () => {
         <div className="space-y-3">
           <div className="flex justify-between">
             <span className="text-gray-400">Total Skills</span>
-            <span className="text-white font-medium">{dashboardData?.summary.total_skills || 0}</span>
+            <span className="text-white font-medium">{dashboardData?.summary && typeof dashboardData.summary.total_skills === 'number' ? dashboardData.summary.total_skills : '--'}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Learning Streak</span>
@@ -243,11 +258,19 @@ export const SkillsDashboard: React.FC = () => {
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Total Time</span>
-            <span className="text-green-400 font-medium">{formatTime(dashboardData?.summary.total_learning_time || 0)}</span>
+            <span className="text-green-400 font-medium">{
+  dashboardData?.summary && typeof dashboardData.summary.total_learning_time === 'number'
+    ? formatTime(dashboardData.summary.total_learning_time)
+    : '--'
+}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Sessions</span>
-            <span className="text-blue-400 font-medium">{dashboardData?.summary.total_sessions || 0}</span>
+            <span className="text-blue-400 font-medium">{
+  dashboardData?.summary && typeof dashboardData.summary.total_sessions === 'number'
+    ? dashboardData.summary.total_sessions
+    : '--'
+}</span>
           </div>
         </div>
       </motion.div>
@@ -275,7 +298,11 @@ export const SkillsDashboard: React.FC = () => {
           </div>
           <div className="flex justify-between">
             <span className="text-gray-400">Categories</span>
-            <span className="text-blue-400 font-medium">{Object.keys(dashboardData?.summary.categories || {}).length}</span>
+            <span className="text-blue-400 font-medium">{
+  dashboardData?.summary && dashboardData.summary.categories
+    ? Object.keys(dashboardData.summary.categories).length
+    : '--'
+}</span>
           </div>
         </div>
       </motion.div>
@@ -327,7 +354,7 @@ export const SkillsDashboard: React.FC = () => {
         </div>
         
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Object.entries(dashboardData?.summary.categories || {}).map(([category, count]) => (
+          {Object.entries(dashboardData?.summary && dashboardData.summary.categories ? dashboardData.summary.categories : {}).map(([category, count]) => (
             <div key={category} className="text-center">
               <div className={`p-3 rounded-lg ${getCategoryColor(category)} mb-2`}>
                 <div className="text-2xl font-bold">{count}</div>
@@ -363,7 +390,7 @@ export const SkillsDashboard: React.FC = () => {
           className="bg-gray-900/50 border border-gray-600 rounded-lg px-4 py-2 text-white focus:border-cyan-500 focus:outline-none"
         >
           <option value="all">All Categories</option>
-          {Object.keys(dashboardData?.summary.categories || {}).map(category => (
+          {Object.keys(dashboardData?.summary && dashboardData.summary.categories ? dashboardData.summary.categories : {}).map(category => (
             <option key={category} value={category}>
               {category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </option>
@@ -624,7 +651,7 @@ export const SkillsDashboard: React.FC = () => {
         ].map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id as any)}
+            onClick={() => setActiveTab(id as 'overview' | 'skills' | 'progress' | 'recommendations')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
               activeTab === id
                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'

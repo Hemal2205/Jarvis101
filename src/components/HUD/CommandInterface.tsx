@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useJarvis } from '../../context/JarvisContext';
-import { Mic, Send, Volume2, MicOff } from 'lucide-react';
+import { Mic, Send, MicOff } from 'lucide-react';
 
 export const CommandInterface: React.FC = () => {
   const { state } = useJarvis();

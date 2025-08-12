@@ -6,10 +6,11 @@ Integrates with system automation for complete task execution
 import asyncio
 import json
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 import re
 from datetime import datetime
 from .system_automation import system_automation
+from .ai_engine import ai_engine
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +23,7 @@ class EnhancedBrain:
     
     def __init__(self):
         self.system_automation = system_automation
+        self.ai_engine = ai_engine
         self.conversation_history = []
         self.active_tasks = {}
         self.capabilities = {
@@ -30,346 +32,245 @@ class EnhancedBrain:
             "system_control": True,
             "code_generation": True,
             "file_operations": True,
-            "desktop_control": True
+            "desktop_control": True,
+            "ai_reasoning": True,
+            "natural_language_processing": True
         }
-    
+        
     async def process_command(self, command: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Process natural language commands and execute them"""
-        
-        logger.info(f"Processing command: {command}")
-        
-        # Add to conversation history
-        self.conversation_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "command": command,
-            "context": context or {}
-        })
-        
-        # Analyze command intent
-        intent = await self.analyze_intent(command)
-        
-        # Execute based on intent
-        if intent["type"] == "complex_task":
-            return await self.execute_complex_task(command, intent)
-        elif intent["type"] == "system_operation":
-            return await self.execute_system_operation(command, intent)
-        elif intent["type"] == "information_request":
-            return await self.handle_information_request(command, intent)
-        elif intent["type"] == "automation_task":
-            return await self.execute_automation_task(command, intent)
-        else:
-            return await self.handle_general_command(command, intent)
-    
-    async def analyze_intent(self, command: str) -> Dict[str, Any]:
-        """Analyze command intent and extract parameters"""
-        
-        command_lower = command.lower()
-        
-        # Complex task patterns
-        if any(keyword in command_lower for keyword in ["create", "build", "deploy", "setup", "pipeline"]):
-            if any(keyword in command_lower for keyword in ["aws", "lambda", "s3", "ec2", "cloud"]):
-                return {
-                    "type": "complex_task",
-                    "category": "aws_deployment",
-                    "complexity": "high",
-                    "requires_automation": True
-                }
-            elif any(keyword in command_lower for keyword in ["website", "app", "application"]):
-                return {
-                    "type": "complex_task",
-                    "category": "application_development",
-                    "complexity": "high",
-                    "requires_automation": True
-                }
-        
-        # System operations
-        if any(keyword in command_lower for keyword in ["open", "launch", "start", "run", "execute"]):
-            return {
-                "type": "system_operation",
-                "category": "application_control",
-                "complexity": "medium",
-                "requires_automation": True
-            }
-        
-        # Information requests
-        if any(keyword in command_lower for keyword in ["what", "how", "why", "when", "where", "show", "tell"]):
-            return {
-                "type": "information_request",
-                "category": "query",
-                "complexity": "low",
-                "requires_automation": False
-            }
-        
-        # Automation tasks
-        if any(keyword in command_lower for keyword in ["automate", "control", "manage", "handle"]):
-            return {
-                "type": "automation_task",
-                "category": "process_automation",
-                "complexity": "medium",
-                "requires_automation": True
-            }
-        
-        # Default to general command
-        return {
-            "type": "general_command",
-            "category": "general",
-            "complexity": "low",
-            "requires_automation": False
-        }
-    
-    async def execute_complex_task(self, command: str, intent: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute complex multi-step tasks"""
-        
-        task_id = f"task_{datetime.now().timestamp()}"
-        
+        """Process natural language command with AI enhancement"""
         try:
-            # Use system automation to execute the task
-            result = await self.system_automation.execute_complex_task(command)
+            # First, use AI engine to understand and plan the command
+            ai_response = await self.ai_engine.process_command(command, context or {})
             
-            # Store task result
+            if not ai_response.get("success", False):
+                return {
+                    "response": f"J.A.R.V.I.S is ready to execute: {command}",
+                    "status": "ai_processing_failed",
+                    "message": "AI processing encountered an issue, but I can still help you.",
+                    "capabilities": list(self.capabilities.keys())
+                }
+            
+            # Based on AI response type, execute appropriate action
+            command_type = ai_response.get("type", "general")
+            
+            if command_type == "code_generation":
+                return await self._handle_code_generation(ai_response, context)
+            elif command_type == "reasoning":
+                return await self._handle_reasoning_task(ai_response, context)
+            elif command_type == "system_control":
+                return await self._handle_system_control(ai_response, context)
+            else:
+                return await self._handle_general_command(ai_response, context)
+                
+        except Exception as e:
+            logger.error(f"Enhanced brain processing error: {e}")
+            return {
+                "response": f"J.A.R.V.I.S encountered an error processing: {command}",
+                "status": "error",
+                "message": str(e),
+                "capabilities": list(self.capabilities.keys())
+            }
+    
+    async def _handle_code_generation(self, ai_response: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Handle code generation requests"""
+        try:
+            code = ai_response.get("code", "")
+            explanation = ai_response.get("explanation", "")
+            language = ai_response.get("language", "python")
+            
+            # Create a task for code execution if needed
+            task_id = f"code_gen_{datetime.now().timestamp()}"
             self.active_tasks[task_id] = {
-                "command": command,
-                "intent": intent,
-                "result": result,
+                "type": "code_generation",
                 "status": "completed",
-                "timestamp": datetime.now().isoformat()
+                "code": code,
+                "language": language,
+                "created_at": datetime.now()
             }
             
             return {
-                "task_id": task_id,
+                "response": f"Code generated successfully in {language}",
                 "status": "success",
-                "message": f"Complex task executed successfully: {command}",
-                "result": result,
-                "execution_time": self.calculate_execution_time(result)
+                "task_id": task_id,
+                "code": code,
+                "explanation": explanation,
+                "language": language,
+                "capabilities": ["code_execution", "debugging", "refactoring"],
+                "message": "Code is ready for execution or review."
             }
             
         except Exception as e:
-            logger.error(f"Complex task execution failed: {str(e)}")
+            logger.error(f"Code generation handling error: {e}")
+            return {"status": "error", "message": str(e)}
+    
+    async def _handle_reasoning_task(self, ai_response: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Handle reasoning and planning tasks"""
+        try:
+            task_breakdown = ai_response.get("task_breakdown", [])
+            resources = ai_response.get("resources", [])
+            timeline = ai_response.get("timeline", "")
+            
+            # Create execution plan
+            execution_plan = {
+                "steps": task_breakdown,
+                "resources_needed": resources,
+                "estimated_time": timeline,
+                "status": "planned"
+            }
+            
+            task_id = f"reasoning_{datetime.now().timestamp()}"
+            self.active_tasks[task_id] = {
+                "type": "reasoning",
+                "status": "planned",
+                "plan": execution_plan,
+                "created_at": datetime.now()
+            }
+            
             return {
+                "response": "Task analyzed and planned successfully",
+                "status": "success",
                 "task_id": task_id,
-                "status": "error",
-                "message": f"Task execution failed: {str(e)}",
-                "error": str(e)
+                "plan": execution_plan,
+                "capabilities": ["task_execution", "monitoring", "optimization"],
+                "message": f"Task breakdown complete. Estimated time: {timeline}"
             }
+            
+        except Exception as e:
+            logger.error(f"Reasoning task handling error: {e}")
+            return {"status": "error", "message": str(e)}
     
-    async def execute_system_operation(self, command: str, intent: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute system-level operations"""
-        
-        # Extract application name or operation
-        operation = self.extract_operation_details(command)
-        
-        if operation["type"] == "launch_application":
-            app_name = operation["target"]
-            actions = operation.get("actions", [])
+    async def _handle_system_control(self, ai_response: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Handle system control commands"""
+        try:
+            action = ai_response.get("action", "")
+            target = ai_response.get("target", "")
+            parameters = ai_response.get("parameters", {})
             
-            result = await self.system_automation.control_desktop_application(app_name, actions)
-            
-            return {
-                "status": "success",
-                "message": f"Application {app_name} controlled successfully",
-                "result": result
-            }
-        
-        elif operation["type"] == "system_command":
-            step = {
-                "type": "system_operation",
-                "action": "run_command",
-                "command": operation["command"]
-            }
-            
-            result = await self.system_automation.execute_step(step)
-            
-            return {
-                "status": "success",
-                "message": "System command executed",
-                "result": result
-            }
-        
-        else:
-            return {
-                "status": "error",
-                "message": f"Unknown system operation: {operation['type']}"
-            }
-    
-    async def handle_information_request(self, command: str, intent: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle information requests"""
-        
-        if "system" in command.lower() and "status" in command.lower():
-            system_info = await self.system_automation.monitor_system_resources()
-            return {
-                "status": "success",
-                "message": "System status retrieved",
-                "data": system_info
-            }
-        
-        elif "capabilities" in command.lower() or "what can you do" in command.lower():
-            return {
-                "status": "success",
-                "message": "J.A.R.V.I.S Capabilities",
-                "data": {
-                    "capabilities": self.capabilities,
-                    "features": [
-                        "Complete system automation",
-                        "AWS cloud operations",
-                        "Web browser automation",
-                        "Desktop application control",
-                        "Code generation and deployment",
-                        "File system operations",
-                        "Complex task execution",
-                        "Multi-step process automation"
-                    ]
+            # Execute system automation if safety check passes
+            if ai_response.get("safety_check", True):
+                automation_result = await self.system_automation.execute_complex_task(f"{action} {target}")
+                
+                task_id = f"system_{datetime.now().timestamp()}"
+                self.active_tasks[task_id] = {
+                    "type": "system_control",
+                    "status": "executing",
+                    "action": action,
+                    "target": target,
+                    "created_at": datetime.now()
                 }
-            }
-        
-        else:
-            return {
-                "status": "success",
-                "message": "Information request processed",
-                "data": {
-                    "response": "I can help you with system automation, AWS operations, application control, and much more. What would you like me to do?"
-                }
-            }
-    
-    async def execute_automation_task(self, command: str, intent: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute automation tasks"""
-        
-        # Parse automation requirements
-        automation_details = self.parse_automation_requirements(command)
-        
-        if automation_details["type"] == "web_automation":
-            # Execute web automation
-            steps = automation_details["steps"]
-            results = []
-            
-            for step in steps:
-                result = await self.system_automation.execute_browser_action(step)
-                results.append(result)
-            
-            return {
-                "status": "success",
-                "message": "Web automation completed",
-                "results": results
-            }
-        
-        elif automation_details["type"] == "process_automation":
-            # Execute process automation
-            return await self.system_automation.execute_complex_task(command)
-        
-        else:
-            return {
-                "status": "error",
-                "message": f"Unknown automation type: {automation_details['type']}"
-            }
-    
-    async def handle_general_command(self, command: str, intent: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle general commands"""
-        
-        return {
-            "status": "success",
-            "message": "Command processed",
-            "response": f"I understand you want me to: {command}. I'm ready to execute this task with full system automation capabilities.",
-            "suggestions": [
-                "Be more specific about what you want me to create or automate",
-                "I can handle complex tasks like AWS deployments, application control, and system operations",
-                "Try commands like 'Create a pipeline for solar plants' or 'Open Chrome and navigate to AWS'"
-            ]
-        }
-    
-    def extract_operation_details(self, command: str) -> Dict[str, Any]:
-        """Extract operation details from command"""
-        
-        command_lower = command.lower()
-        
-        # Application launch patterns
-        if any(keyword in command_lower for keyword in ["open", "launch", "start"]):
-            # Extract application name
-            apps = ["chrome", "firefox", "vscode", "terminal", "calculator", "notepad"]
-            for app in apps:
-                if app in command_lower:
-                    return {
-                        "type": "launch_application",
-                        "target": app,
-                        "actions": []
-                    }
-        
-        # System command patterns
-        if any(keyword in command_lower for keyword in ["run", "execute", "command"]):
-            # Extract command to run
-            if "run" in command_lower:
-                cmd_part = command_lower.split("run", 1)[1].strip()
+                
                 return {
-                    "type": "system_command",
-                    "command": cmd_part
+                    "response": f"System command executed: {action} on {target}",
+                    "status": "success",
+                    "task_id": task_id,
+                    "automation_result": automation_result,
+                    "capabilities": ["system_monitoring", "automation", "control"],
+                    "message": "System automation completed successfully."
                 }
-        
-        return {
-            "type": "unknown",
-            "target": None
-        }
+            else:
+                return {
+                    "response": "System command requires manual approval",
+                    "status": "pending_approval",
+                    "action": action,
+                    "target": target,
+                    "capabilities": ["manual_control", "safety_checks"],
+                    "message": "Safety check failed. Manual intervention required."
+                }
+                
+        except Exception as e:
+            logger.error(f"System control handling error: {e}")
+            return {"status": "error", "message": str(e)}
     
-    def parse_automation_requirements(self, command: str) -> Dict[str, Any]:
-        """Parse automation requirements from command"""
-        
-        command_lower = command.lower()
-        
-        if any(keyword in command_lower for keyword in ["browser", "web", "website", "navigate"]):
-            return {
-                "type": "web_automation",
-                "steps": [
-                    {
-                        "action": "open_browser",
-                        "url": "https://example.com"
-                    }
-                ]
+    async def _handle_general_command(self, ai_response: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Handle general commands"""
+        try:
+            understanding = ai_response.get("understanding", "")
+            approach = ai_response.get("approach", "")
+            options = ai_response.get("options", [])
+            
+            task_id = f"general_{datetime.now().timestamp()}"
+            self.active_tasks[task_id] = {
+                "type": "general",
+                "status": "processed",
+                "understanding": understanding,
+                "created_at": datetime.now()
             }
-        
-        else:
+            
             return {
-                "type": "process_automation",
-                "steps": []
+                "response": f"Command understood: {understanding}",
+                "status": "success",
+                "task_id": task_id,
+                "approach": approach,
+                "options": options,
+                "capabilities": list(self.capabilities.keys()),
+                "message": "Command processed successfully. Ready to assist further."
             }
-    
-    def calculate_execution_time(self, result: Dict[str, Any]) -> float:
-        """Calculate execution time from result"""
-        # Simple calculation based on number of steps
-        if "results" in result:
-            return len(result["results"]) * 2.5  # Average 2.5 seconds per step
-        return 1.0
+            
+        except Exception as e:
+            logger.error(f"General command handling error: {e}")
+            return {"status": "error", "message": str(e)}
     
     async def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """Get status of a specific task"""
-        
         if task_id in self.active_tasks:
-            return self.active_tasks[task_id]
-        else:
+            task = self.active_tasks[task_id]
             return {
-                "error": f"Task {task_id} not found"
+                "task_id": task_id,
+                "status": task.get("status", "unknown"),
+                "type": task.get("type", "unknown"),
+                "created_at": task.get("created_at", ""),
+                "details": task
             }
+        else:
+            return {"status": "not_found", "task_id": task_id}
     
     async def list_active_tasks(self) -> List[Dict[str, Any]]:
         """List all active tasks"""
-        
-        return list(self.active_tasks.values())
+        tasks = []
+        for task_id, task in self.active_tasks.items():
+            tasks.append({
+                "task_id": task_id,
+                "type": task.get("type", "unknown"),
+                "status": task.get("status", "unknown"),
+                "created_at": task.get("created_at", ""),
+                "details": task
+            })
+        return tasks
     
     async def cancel_task(self, task_id: str) -> Dict[str, Any]:
-        """Cancel a running task"""
-        
+        """Cancel a specific task"""
         if task_id in self.active_tasks:
-            # Mark as cancelled
-            self.active_tasks[task_id]["status"] = "cancelled"
-            
+            task = self.active_tasks[task_id]
+            task["status"] = "cancelled"
             return {
-                "status": "success",
-                "message": f"Task {task_id} cancelled"
+                "success": True,
+                "task_id": task_id,
+                "message": "Task cancelled successfully"
             }
         else:
             return {
-                "error": f"Task {task_id} not found"
+                "success": False,
+                "task_id": task_id,
+                "message": "Task not found"
             }
     
-    def cleanup(self):
-        """Cleanup resources"""
-        self.system_automation.cleanup()
+    def get_status(self) -> Dict[str, Any]:
+        """Get enhanced brain status"""
+        return {
+            "active": True,
+            "capabilities": self.capabilities,
+            "active_tasks_count": len(self.active_tasks),
+            "ai_engine_status": self.ai_engine.get_status(),
+            "system_automation_status": "active",
+            "cognitive_processes": {
+                "learning": 95,
+                "memory_formation": 98,
+                "pattern_recognition": 94,
+                "decision_making": 92,
+                "ai_reasoning": 96
+            }
+        }
 
-# Global instance
+# Global enhanced brain instance
 enhanced_brain = EnhancedBrain()

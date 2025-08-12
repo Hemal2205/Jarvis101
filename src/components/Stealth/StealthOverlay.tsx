@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useJarvis } from '../../context/JarvisContext';
-import { Eye, EyeOff, Mic, MicOff, MessageCircle, FileText } from 'lucide-react';
+import { Eye, EyeOff, Mic, MicOff, FileText } from 'lucide-react';
 
 interface StealthOverlayProps {
   mode: 'stealth-interview' | 'stealth-exam';
@@ -11,42 +11,60 @@ export const StealthOverlay: React.FC<StealthOverlayProps> = ({ mode }) => {
   const { state } = useJarvis();
   const [isVisible, setIsVisible] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [currentTranscription, setCurrentTranscription] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  // Use state to show user-specific stealth data
+  const userStealthData = state.currentUser ? `Stealth mode for ${state.currentUser}` : 'Anonymous stealth mode';
 
   useEffect(() => {
     // Initialize stealth mode
     if (mode === 'stealth-interview') {
-      // Start voice recognition for interview assistance
       startInterviewMode();
     } else if (mode === 'stealth-exam') {
-      // Initialize exam assistance
       startExamMode();
     }
   }, [mode]);
 
+  // Fetch live suggestions from backend
+  useEffect(() => {
+    if (isVisible && mode === 'stealth-interview') {
+      fetch('/api/stealth/suggestions')
+        .then(res => res.json())
+        .then(data => setSuggestions(data.suggestions || []))
+        .catch(() => setSuggestions([]));
+    }
+  }, [isVisible, mode]);
+
+  // Poll for live transcription from backend
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isListening && mode === 'stealth-interview') {
+      const fetchTranscription = () => {
+        fetch('/api/stealth/transcription')
+          .then(res => res.json())
+          .then(data => setCurrentTranscription(data.transcription || ''))
+          .catch(() => setCurrentTranscription(''));
+      };
+      fetchTranscription();
+      interval = setInterval(fetchTranscription, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [isListening, mode]);
+
   const startInterviewMode = () => {
     setIsListening(true);
-    // Voice recognition logic would go here
-    // This would connect to the backend for real-time transcription
-    console.log('Interview mode activated');
+    // No mockTranscription, now handled by polling
   };
 
   const startExamMode = () => {
     // Initialize exam assistance
-    console.log('Exam mode activated');
+    // (Add live data logic here if needed)
   };
 
   const toggleVisibility = () => {
     setIsVisible(!isVisible);
   };
-
-  const mockSuggestions = [
-    "I have experience with React and TypeScript in my previous projects...",
-    "My approach to problem-solving involves breaking down complex issues...",
-    "I believe in continuous learning and staying updated with technology...",
-    "Team collaboration is essential for successful project delivery...",
-  ];
 
   if (mode === 'stealth-interview') {
     return (
@@ -66,7 +84,10 @@ export const StealthOverlay: React.FC<StealthOverlayProps> = ({ mode }) => {
           className="fixed top-16 right-4 w-80 bg-gray-900 bg-opacity-95 backdrop-blur-xl rounded-lg border border-cyan-500 border-opacity-30 p-4 pointer-events-auto"
         >
           <div className="flex items-center justify-between mb-4">
+            <div>
             <h3 className="text-sm font-semibold text-cyan-400">Interview Assistant</h3>
+              <p className="text-xs text-gray-500">{userStealthData}</p>
+            </div>
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setIsListening(!isListening)}
@@ -89,7 +110,7 @@ export const StealthOverlay: React.FC<StealthOverlayProps> = ({ mode }) => {
           <div>
             <div className="text-xs text-gray-400 mb-2">Suggested Responses:</div>
             <div className="space-y-2 max-h-40 overflow-y-auto">
-              {mockSuggestions.map((suggestion, index) => (
+              {suggestions.map((suggestion, index) => (
                 <motion.div
                   key={index}
                   initial={{ opacity: 0, x: -20 }}
@@ -101,6 +122,9 @@ export const StealthOverlay: React.FC<StealthOverlayProps> = ({ mode }) => {
                   {suggestion}
                 </motion.div>
               ))}
+              {suggestions.length === 0 && (
+                <div className="text-gray-500 text-xs">No suggestions available.</div>
+              )}
             </div>
           </div>
         </motion.div>

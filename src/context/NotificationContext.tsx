@@ -1,0 +1,1 @@
+// This is a move operation, not a code edit. Please move NotificationContext.tsx from src/context/ to src/components/. 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useJarvis } from '../../context/JarvisContext';
-import { Eye, Mic, Shield, Lock, Zap, User, Camera, MicIcon, Check, X, Loader } from 'lucide-react';
+import { Eye, Mic, User, Camera, MicIcon, Check, X, Loader } from 'lucide-react';
 
 interface RegistrationStep {
   id: string;
@@ -11,8 +11,12 @@ interface RegistrationStep {
   active: boolean;
 }
 
-export const AuthenticationScreen: React.FC = () => {
-  const { authenticate } = useJarvis();
+interface AuthenticationScreenProps {
+  onAuthenticated?: () => void;
+}
+
+export const AuthenticationScreen: React.FC<AuthenticationScreenProps> = ({ onAuthenticated }) => {
+  const { authenticate, login } = useJarvis();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [authMethod, setAuthMethod] = useState<'face' | 'voice' | null>(null);
@@ -28,6 +32,8 @@ export const AuthenticationScreen: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [isVoiceAuthRecording, setIsVoiceAuthRecording] = useState(false);
+  const [voiceAuthChunks, setVoiceAuthChunks] = useState<BlobPart[]>([]);
 
   const registrationSteps: RegistrationStep[] = [
     {
@@ -56,12 +62,18 @@ export const AuthenticationScreen: React.FC = () => {
   useEffect(() => {
     return () => {
       if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
       }
     };
   }, [stream]);
 
   const handleAuthenticate = async (method: 'face' | 'voice') => {
+    // Check if username is set before attempting biometric authentication
+    if (!username.trim()) {
+      setError('Please enter your username first before using biometric authentication');
+      return;
+    }
+
     setIsAuthenticating(true);
     setAuthMethod(method);
     setError(null);
@@ -73,11 +85,22 @@ export const AuthenticationScreen: React.FC = () => {
         const imageData = await captureImage();
         if (!imageData) {
           setError('Failed to capture image');
+          setIsAuthenticating(false);
+          setAuthMethod(null);
           return;
         }
         result = await authenticateWithFace(imageData);
+        if (result && result.success) {
+          setSuccess('Login successful!');
+          // Log in the user
+          await login(username);
+          onAuthenticated?.();
+        }
+      } else if (method === 'voice') {
+        // Start voice authentication recording
+        await startVoiceAuthRecording();
+        return; // The rest is handled after recording
       } else {
-        // Voice authentication would be implemented here
         result = await authenticate(method);
       }
       
@@ -88,8 +111,10 @@ export const AuthenticationScreen: React.FC = () => {
       console.error('Authentication error:', error);
       setError('Authentication error. Please try again.');
     } finally {
-      setIsAuthenticating(false);
-      setAuthMethod(null);
+      if (method !== 'voice') {
+        setIsAuthenticating(false);
+        setAuthMethod(null);
+      }
     }
   };
 
@@ -115,7 +140,7 @@ export const AuthenticationScreen: React.FC = () => {
       } else {
         setError(result.message || 'Registration failed');
       }
-    } catch (error) {
+    } catch {
       console.error('Registration error:', error);
       setError('Registration failed. Please try again.');
     }
@@ -133,7 +158,7 @@ export const AuthenticationScreen: React.FC = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
-    } catch (error) {
+    } catch {
       console.error('Camera initialization error:', error);
       setError('Failed to access camera');
     }
@@ -152,8 +177,8 @@ export const AuthenticationScreen: React.FC = () => {
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0);
 
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => {
+    return new Promise((resolve: (value: Blob | null) => void) => {
+      canvas.toBlob((blob: Blob | null) => {
         resolve(blob);
       }, 'image/jpeg', 0.8);
     });
@@ -169,6 +194,7 @@ export const AuthenticationScreen: React.FC = () => {
 
       const formData = new FormData();
       formData.append('image', imageBlob);
+      formData.append('username', username); // Ensure username is sent
 
       const response = await fetch('/api/register/face', {
         method: 'POST',
@@ -188,11 +214,30 @@ export const AuthenticationScreen: React.FC = () => {
       } else {
         setError(result.message || 'Face registration failed');
       }
-    } catch (error) {
+    } catch {
       console.error('Face registration error:', error);
       setError('Face registration failed. Please try again.');
     }
   };
+
+  // Utility: Safe MediaRecorder creation with fallback
+  function createSafeMediaRecorder(stream: MediaStream): MediaRecorder | null {
+    const mimeTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/wav',
+      '' // fallback to default
+    ];
+    for (const mimeType of mimeTypes) {
+      try {
+        if (mimeType && !MediaRecorder.isTypeSupported(mimeType)) continue;
+        return mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      } catch (e) {
+        // Try next
+      }
+    }
+    return null;
+  }
 
   const initializeMicrophone = async () => {
     try {
@@ -200,50 +245,62 @@ export const AuthenticationScreen: React.FC = () => {
         video: false,
         audio: true
       });
-      
       setStream(mediaStream);
-      
-      const mediaRecorder = new MediaRecorder(mediaStream);
+      // SAFER: Use safe MediaRecorder creation
+      const mediaRecorder = createSafeMediaRecorder(mediaStream);
+      if (!mediaRecorder) throw new Error('MediaRecorder not supported for this browser/codec.');
       mediaRecorderRef.current = mediaRecorder;
-      
     } catch (error) {
       console.error('Microphone initialization error:', error);
-      setError('Failed to access microphone');
+      setError('Failed to access microphone or MediaRecorder not supported.');
     }
   };
 
-  const startVoiceRecording = () => {
-    if (!mediaRecorderRef.current) return;
-
+  const startVoiceRecording = async () => {
+    if (!mediaRecorderRef.current) {
+      console.log('MediaRecorder not initialized, initializing microphone...');
+      await initializeMicrophone();
+      if (!mediaRecorderRef.current) {
+        setError('Failed to initialize microphone or MediaRecorder.');
+        return;
+      }
+    }
     const chunks: BlobPart[] = [];
-    
-    mediaRecorderRef.current.ondataavailable = (event) => {
+    mediaRecorderRef.current.ondataavailable = (event: BlobEvent) => {
       if (event.data.size > 0) {
         chunks.push(event.data);
       }
     };
-
     mediaRecorderRef.current.onstop = async () => {
-      const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+      const audioBlob = new Blob(chunks, { type: 'audio/webm' }); // webm is most widely supported
+      console.log('Recording stopped, uploading audio sample...');
       await registerVoiceSample(audioBlob);
     };
-
-    mediaRecorderRef.current.start();
-    setIsRecording(true);
-
-    // Auto-stop after 3 seconds
+    try {
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      console.log('Recording started');
+    } catch (error) {
+      setError('Failed to start recording. MediaRecorder not supported or already started.');
+      console.error('MediaRecorder start error:', error);
+      return;
+    }
     setTimeout(() => {
       if (mediaRecorderRef.current && isRecording) {
+        console.log('Auto-stopping recording after 3 seconds');
         mediaRecorderRef.current.stop();
         setIsRecording(false);
       }
     }, 3000);
   };
 
+  // Patch: Add logging to registerVoiceSample
   const registerVoiceSample = async (audioBlob: Blob) => {
     try {
+      console.log('Uploading voice sample...');
       const formData = new FormData();
       formData.append('audio', audioBlob);
+      formData.append('username', username); // Ensure username is sent
 
       const response = await fetch('/api/register/voice', {
         method: 'POST',
@@ -251,11 +308,10 @@ export const AuthenticationScreen: React.FC = () => {
       });
 
       const result = await response.json();
-      
+      console.log('Voice sample upload result:', result);
       if (result.success) {
-        setVoiceSamples(prev => prev + 1);
+        setVoiceSamples((prev: number) => prev + 1);
         setSuccess(result.message);
-        
         if (result.next_step === 'complete_registration') {
           await completeRegistration();
         }
@@ -271,7 +327,13 @@ export const AuthenticationScreen: React.FC = () => {
   const completeRegistration = async () => {
     try {
       const response = await fetch('/api/register/complete', {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: username
+        })
       });
 
       const result = await response.json();
@@ -280,9 +342,14 @@ export const AuthenticationScreen: React.FC = () => {
         setRegistrationStep('complete');
         setSuccess('Registration completed successfully! You can now log in.');
         
+        // Automatically log in the user after successful registration
+        await login(username);
+        
+        onAuthenticated?.();
+        
         // Clean up streams
         if (stream) {
-          stream.getTracks().forEach(track => track.stop());
+          stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
           setStream(null);
         }
         
@@ -305,6 +372,7 @@ export const AuthenticationScreen: React.FC = () => {
   const authenticateWithFace = async (imageBlob: Blob) => {
     const formData = new FormData();
     formData.append('image', imageBlob);
+    formData.append('username', username); // Add username parameter
 
     const response = await fetch('/api/authenticate/face', {
       method: 'POST',
@@ -312,6 +380,75 @@ export const AuthenticationScreen: React.FC = () => {
     });
 
     return await response.json();
+  };
+
+  // Voice authentication recording logic
+  const startVoiceAuthRecording = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const recorder = createSafeMediaRecorder(mediaStream);
+      if (!recorder) throw new Error('MediaRecorder not supported for this browser/codec.');
+      setVoiceAuthChunks([]);
+      setIsVoiceAuthRecording(true);
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          setVoiceAuthChunks((prev: BlobPart[]) => [...prev, event.data]);
+        }
+      };
+      recorder.onstop = async () => {
+        setIsVoiceAuthRecording(false);
+        const audioBlob = new Blob(voiceAuthChunks, { type: 'audio/webm' });
+        await authenticateWithVoice(audioBlob);
+        // Clean up
+        mediaStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+        setVoiceAuthChunks([]);
+      };
+      try {
+        recorder.start();
+      } catch (error) {
+        setError('Failed to start voice authentication recording. MediaRecorder not supported or already started.');
+        setIsVoiceAuthRecording(false);
+        return;
+      }
+      setTimeout(() => {
+        if (recorder.state === 'recording') {
+          recorder.stop();
+        }
+      }, 3000);
+    } catch (error) {
+      setError('Failed to access microphone or MediaRecorder not supported for voice authentication.');
+      setIsAuthenticating(false);
+      setAuthMethod(null);
+    }
+  };
+
+  const authenticateWithVoice = async (audioBlob: Blob) => {
+    setIsAuthenticating(true);
+    setAuthMethod('voice');
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+      formData.append('username', username); // Add username parameter
+      const response = await fetch('/api/authenticate/voice', {
+        method: 'POST',
+        body: formData
+      });
+      const result = await response.json();
+      if (result.success) {
+        setSuccess('Voice authentication successful!');
+        // Log in the user on successful voice authentication
+        await login(username);
+        onAuthenticated?.();
+      } else {
+        setError(result.message || 'Voice authentication failed.');
+      }
+    } catch (error) {
+      setError('Voice authentication error. Please try again.');
+    } finally {
+      setIsAuthenticating(false);
+      setAuthMethod(null);
+    }
   };
 
   const renderLoginMode = () => (
@@ -326,41 +463,101 @@ export const AuthenticationScreen: React.FC = () => {
         <p className="text-sm text-gray-400 mt-2">Please authenticate to continue</p>
       </motion.div>
 
+      {/* Quick Login with Username */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-md space-y-4"
+      >
+        <div className="flex space-x-2">
+          <input
+            type="text"
+            placeholder="Enter your username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="flex-1 px-4 py-2 bg-gray-800/50 border border-cyan-500/30 rounded-lg text-cyan-300 placeholder-gray-400 focus:outline-none focus:border-cyan-400"
+          />
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={async () => {
+              if (username.trim()) {
+                await login(username);
+                onAuthenticated?.();
+              } else {
+                setError('Please enter a username');
+              }
+            }}
+            className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-blue-600 transition-all"
+          >
+            Quick Login
+          </motion.button>
+        </div>
+      </motion.div>
+
+      <div className="flex items-center space-x-4">
+        <div className="flex-1 h-px bg-gray-600"></div>
+        <span className="text-gray-400 text-sm">OR</span>
+        <div className="flex-1 h-px bg-gray-600"></div>
+      </div>
+
       <div className="flex space-x-8">
         <motion.button
-          whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(0, 255, 255, 0.3)" }}
-          whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: username.trim() ? 1.05 : 1, boxShadow: username.trim() ? "0 0 20px rgba(0, 255, 255, 0.3)" : "none" }}
+          whileTap={{ scale: username.trim() ? 0.95 : 1 }}
           onClick={() => handleAuthenticate('face')}
-          disabled={isAuthenticating}
-          className="flex flex-col items-center space-y-4 p-8 bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-cyan-500/30 rounded-xl backdrop-blur-sm"
+          disabled={isAuthenticating || isVoiceAuthRecording || !username.trim()}
+          className={`flex flex-col items-center space-y-4 p-8 rounded-xl backdrop-blur-sm transition-all ${
+            username.trim() 
+              ? 'bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-cyan-500/30' 
+              : 'bg-gradient-to-br from-gray-800/30 to-gray-700/30 border border-gray-500/30 opacity-50'
+          }`}
         >
           <div className="relative">
-            <Eye className="w-12 h-12 text-cyan-400" />
+            <Eye className={`w-12 h-12 ${username.trim() ? 'text-cyan-400' : 'text-gray-500'}`} />
             {isAuthenticating && authMethod === 'face' && (
               <div className="absolute -top-2 -right-2">
                 <Loader className="w-6 h-6 text-cyan-400 animate-spin" />
               </div>
             )}
           </div>
-          <span className="text-lg text-cyan-300">Face Authentication</span>
+          <span className={`text-lg ${username.trim() ? 'text-cyan-300' : 'text-gray-500'}`}>Face Authentication</span>
+          {!username.trim() && (
+            <span className="text-xs text-gray-500 mt-2">Enter username first</span>
+          )}
         </motion.button>
 
         <motion.button
-          whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(0, 255, 255, 0.3)" }}
-          whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: username.trim() ? 1.05 : 1, boxShadow: username.trim() ? "0 0 20px rgba(0, 255, 255, 0.3)" : "none" }}
+          whileTap={{ scale: username.trim() ? 0.95 : 1 }}
           onClick={() => handleAuthenticate('voice')}
-          disabled={isAuthenticating}
-          className="flex flex-col items-center space-y-4 p-8 bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-cyan-500/30 rounded-xl backdrop-blur-sm"
+          disabled={isAuthenticating || isVoiceAuthRecording || !username.trim()}
+          className={`flex flex-col items-center space-y-4 p-8 rounded-xl backdrop-blur-sm transition-all ${
+            username.trim() 
+              ? 'bg-gradient-to-br from-blue-900/30 to-cyan-900/30 border border-cyan-500/30' 
+              : 'bg-gradient-to-br from-gray-800/30 to-gray-700/30 border border-gray-500/30 opacity-50'
+          }`}
         >
           <div className="relative">
-            <Mic className="w-12 h-12 text-cyan-400" />
-            {isAuthenticating && authMethod === 'voice' && (
+            <Mic className={`w-12 h-12 ${username.trim() ? 'text-cyan-400' : 'text-gray-500'}`} />
+            {(isAuthenticating && authMethod === 'voice') && (
               <div className="absolute -top-2 -right-2">
                 <Loader className="w-6 h-6 text-cyan-400 animate-spin" />
               </div>
             )}
+            {isVoiceAuthRecording && (
+              <div className="absolute -top-2 -right-2">
+                <Loader className="w-6 h-6 text-red-400 animate-spin" />
+              </div>
+            )}
           </div>
-          <span className="text-lg text-cyan-300">Voice Authentication</span>
+          <span className={`text-lg ${username.trim() ? 'text-cyan-300' : 'text-gray-500'}`}>Voice Authentication</span>
+          {!username.trim() && (
+            <span className="text-xs text-gray-500 mt-2">Enter username first</span>
+          )}
+          {isVoiceAuthRecording && (
+            <span className="text-xs text-red-400 mt-2">Recording... Please say: "J.A.R.V.I.S, this is my voice authentication sample"</span>
+          )}
         </motion.button>
       </div>
 
@@ -504,31 +701,45 @@ export const AuthenticationScreen: React.FC = () => {
                 Say: "J.A.R.V.I.S, this is my voice authentication sample"
               </p>
             </div>
-            
             <div className="flex flex-col items-center space-y-4">
               <div className={`w-32 h-32 rounded-full border-4 flex items-center justify-center ${
                 isRecording ? 'border-red-500 bg-red-500/20' : 'border-cyan-500 bg-cyan-500/20'
               }`}>
                 <MicIcon className={`w-16 h-16 ${isRecording ? 'text-red-400' : 'text-cyan-400'}`} />
               </div>
-              
-              <button
-                onClick={startVoiceRecording}
-                disabled={isRecording || voiceSamples >= 3}
-                className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-3 px-6 rounded-lg font-medium hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2"
-              >
-                {isRecording ? (
-                  <>
-                    <Loader className="w-5 h-5 animate-spin" />
-                    <span>Recording...</span>
-                  </>
-                ) : (
-                  <>
-                    <MicIcon className="w-5 h-5" />
-                    <span>Record Voice Sample</span>
-                  </>
+              <div className="flex space-x-4">
+                <button
+                  onClick={startVoiceRecording}
+                  disabled={isRecording || voiceSamples >= 3}
+                  className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-3 px-6 rounded-lg font-medium hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2"
+                >
+                  {isRecording ? (
+                    <>
+                      <Loader className="w-5 h-5 animate-spin" />
+                      <span>Recording...</span>
+                    </>
+                  ) : (
+                    <>
+                      <MicIcon className="w-5 h-5" />
+                      <span>Start Recording</span>
+                    </>
+                  )}
+                </button>
+                {isRecording && (
+                  <button
+                    onClick={() => {
+                      if (mediaRecorderRef.current && isRecording) {
+                        mediaRecorderRef.current.stop();
+                        setIsRecording(false);
+                        console.log('Recording stopped by user');
+                      }
+                    }}
+                    className="bg-red-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-red-700 transition-all flex items-center justify-center space-x-2"
+                  >
+                    <span>Stop</span>
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
           </motion.div>
         )}

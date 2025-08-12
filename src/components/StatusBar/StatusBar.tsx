@@ -1,10 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useJarvis } from '../../context/JarvisContext';
-import { Wifi, Battery, Clock, User } from 'lucide-react';
+import { Wifi, Battery, Clock, User, LogOut } from 'lucide-react';
 
 export const StatusBar: React.FC = () => {
-  const { state } = useJarvis();
+  const { state, logout } = useJarvis();
   const [currentTime, setCurrentTime] = React.useState(new Date());
 
   React.useEffect(() => {
@@ -30,6 +30,15 @@ export const StatusBar: React.FC = () => {
       case 'stealth-exam': return 'text-red-400';
       case 'passive-copilot': return 'text-yellow-400';
       default: return 'text-gray-400';
+    }
+  };
+
+  const handleLogout = () => {
+    const confirmed = window.confirm('Are you sure you want to logout from J.A.R.V.I.S?');
+    if (confirmed) {
+      logout();
+      localStorage.removeItem('jarvis_session_token');
+      window.location.reload();
     }
   };
 
@@ -72,6 +81,15 @@ export const StatusBar: React.FC = () => {
           <div className="flex items-center space-x-2">
             <Wifi className="w-4 h-4 text-green-400" />
             <Battery className="w-4 h-4 text-green-400" />
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleLogout}
+              className="p-1 rounded hover:bg-red-800/30 transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4 text-red-400 hover:text-red-300" />
+            </button>
           </div>
         </div>
       </div>

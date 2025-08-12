@@ -1,0 +1,94 @@
+{
+  "tech_stack": [
+    "Python 3.8+ (Backend)",
+    "FastAPI (Backend)",
+    "SQLAlchemy (ORM)",
+    "Node.js 16+/18+ (Frontend)",
+    "React.js (Frontend)",
+    "Three.js (3D UI)",
+    "TailwindCSS (Styling)",
+    "Socket.IO (Realtime)",
+    "Framer Motion (Animations)",
+    "OpenCV, face-recognition, SpeechRecognition, pydub, librosa (Biometrics)",
+    "Boto3 (AWS Integration)",
+    "Tesseract (OCR)",
+    "Vite (Frontend Build)"
+  ],
+  "features": [
+    {
+      "name": "Multi-LLM AI Brain",
+      "description": "Integrates multiple large language models for reasoning, planning, code generation, and conversation.",
+      "files": ["backend/core/ai_engine.py", "backend/main.py"]
+    },
+    {
+      "name": "Face & Voice Authentication",
+      "description": "Biometric authentication using face and voice recognition with liveness detection.",
+      "files": ["backend/core/security.py", "src/components/Authentication/AuthenticationScreen.tsx", "backend/core/stealth_system.py"]
+    },
+    {
+      "name": "Memory Vault",
+      "description": "Secure, encrypted storage and playback of personal, family, and learning memories.",
+      "files": ["backend/core/memory.py", "src/components/MemoryVault/MemoryVault.tsx"]
+    },
+    {
+      "name": "Stealth Modes",
+      "description": "Exam, interview, and passive copilot modes with anti-detection overlays and proctoring bypass.",
+      "files": ["backend/core/stealth_system.py", "src/components/Stealth/AdvancedStealth.tsx", "src/components/Stealth/EnhancedStealthOverlay.tsx"]
+    },
+    {
+      "name": "System Automation",
+      "description": "Automates desktop, browser, and cloud operations including AWS, file, and application control.",
+      "files": ["backend/core/system_automation.py", "src/components/Automation/AutomationDashboard.tsx"]
+    },
+    {
+      "name": "Copy Engine",
+      "description": "Secure cloning, licensing, and master control of JARVIS copies.",
+      "files": ["backend/core/copy_engine.py", "src/components/CopyEngine/CopyEngine.tsx"]
+    },
+    {
+      "name": "Autonomous Evolution",
+      "description": "Self-improving system with code refactoring, optimization, and rollback.",
+      "files": ["backend/core/evolution.py", "src/components/Evolution/EvolutionDashboard.tsx"]
+    },
+    {
+      "name": "Predictive Task Management",
+      "description": "AI-driven task prioritization, analytics, and productivity recommendations.",
+      "files": ["src/components/TaskManagement/PredictiveTaskManager.tsx", "backend/core/task_manager.py"]
+    },
+    {
+      "name": "AI Content Creation Suite",
+      "description": "Multi-format content generation for blogs, emails, reports, and more.",
+      "files": ["src/components/ContentCreation/AIContentSuite.tsx"]
+    },
+    {
+      "name": "Advanced Learning Suite",
+      "description": "Personalized learning paths, skill tracking, and analytics.",
+      "files": ["src/components/Learning/AdvancedLearningSuite.tsx"]
+    },
+    {
+      "name": "Environmental & Health Suite",
+      "description": "Real-time health and environmental monitoring, reminders, and analytics.",
+      "files": ["src/components/Health/EnvironmentalHealthSuite.tsx", "src/components/Health/PredictiveHealthDashboard.tsx"]
+    },
+    {
+      "name": "Real-time Monitoring & Analytics",
+      "description": "System metrics, performance alerts, and user activity tracking.",
+      "files": ["backend/core/realtime_monitor.py", "src/components/Monitoring/MonitoringDashboard.tsx"]
+    },
+    {
+      "name": "3D Cinematic HUD",
+      "description": "Futuristic 3D interface with holographic effects and animated elements.",
+      "files": ["src/components/3D/Scene3D.tsx", "src/components/HUD/AnalyticsDashboard.tsx"]
+    },
+    {
+      "name": "Smart Home Integration",
+      "description": "Device control, automation rules, and remote access.",
+      "files": ["src/components/SmartHome/SmartHomeDashboard.tsx"]
+    },
+    {
+      "name": "VR Workspace",
+      "description": "Virtual reality panels and workspace for immersive interaction.",
+      "files": ["src/components/VR/VRWorkspace.tsx", "src/components/VRWorkspace/VRWorkspace.tsx"]
+    }
+  ]
+} 

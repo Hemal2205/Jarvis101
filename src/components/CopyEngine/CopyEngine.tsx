@@ -1,204 +1,279 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useJarvis } from '../../context/JarvisContext';
-import { X, Copy, Download, Settings, Shield, Users, Zap } from 'lucide-react';
+import { Copy, Wand2, FileText, Target, Sparkles, Download } from 'lucide-react';
 
-interface CopyEngineProps {
-  onClose: () => void;
+interface CopyTemplate {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
 }
 
-export const CopyEngine: React.FC<CopyEngineProps> = ({ onClose }) => {
-  const { state, createCopy } = useJarvis();
-  const [copyName, setCopyName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const [downloadUrl, setDownloadUrl] = useState('');
+export const CopyEngine: React.FC = () => {
+  const [templates, setTemplates] = useState<CopyTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<CopyTemplate | null>(null);
+  const [prompt, setPrompt] = useState('');
+  const [generatedCopy, setGeneratedCopy] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [copyHistory, setCopyHistory] = useState<string[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
-  const handleCreateCopy = async () => {
-    if (!copyName.trim()) return;
-    
-    setIsCreating(true);
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      setTemplatesLoading(true);
+      setTemplatesError(null);
+      try {
+        const res = await fetch('/api/copy/templates');
+        if (res.ok) {
+          const data = await res.json();
+          setTemplates(data.templates || []);
+        } else {
+          setTemplatesError('Failed to fetch templates');
+        }
+      } catch {
+        setTemplatesError('Failed to fetch templates');
+      }
+      setTemplatesLoading(false);
+    };
+    fetchTemplates();
+  }, []);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const res = await fetch('/api/copy/history');
+        if (res.ok) {
+          const data = await res.json();
+          setCopyHistory(data.history || []);
+        } else {
+          setHistoryError('Failed to fetch copy history');
+        }
+      } catch {
+        setHistoryError('Failed to fetch copy history');
+      }
+      setHistoryLoading(false);
+    };
+    fetchHistory();
+  }, []);
+
+  const generateCopy = async () => {
+    if (!prompt.trim()) return;
+    setIsGenerating(true);
+    setGenerateError(null);
     try {
-      const url = await createCopy(copyName);
-      setDownloadUrl(url);
-    } catch (error) {
-      console.error('Failed to create copy:', error);
-    } finally {
-      setIsCreating(false);
+      const res = await fetch('/api/copy/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          template_id: selectedTemplate?.id || null
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGeneratedCopy(data.copy || '');
+        // Optionally update history
+        setCopyHistory(prev => [data.copy || '', ...prev.slice(0, 4)]);
+      } else {
+        setGenerateError('Failed to generate copy');
+      }
+    } catch {
+      setGenerateError('Failed to generate copy');
     }
+    setIsGenerating(false);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'text-green-400';
-      case 'disabled': return 'text-red-400';
-      case 'updating': return 'text-yellow-400';
-      default: return 'text-gray-400';
-    }
+  const downloadCopy = (text: string, filename: string = 'generated-copy.txt') => {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const useTemplate = (template: CopyTemplate) => {
+    setSelectedTemplate(template);
+    setPrompt(template.prompt);
   };
 
   return (
-    <motion.div
-      initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ scale: 0.9, opacity: 0 }}
-      className="bg-gray-900 bg-opacity-95 backdrop-blur-xl rounded-3xl border border-cyan-500 border-opacity-30 p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-cyan-400 flex items-center">
-          <Copy className="w-6 h-6 mr-2" />
-          Copy Engine
-        </h2>
-        <button
-          onClick={onClose}
-          className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Create New Copy */}
-      <div className="bg-gray-800 bg-opacity-50 rounded-2xl p-6 mb-6">
-        <h3 className="text-lg font-semibold text-cyan-300 mb-4 flex items-center">
-          <Zap className="w-5 h-5 mr-2" />
-          Create New Copy
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Copy Name
-            </label>
-            <input
-              type="text"
-              value={copyName}
-              onChange={(e) => setCopyName(e.target.value)}
-              placeholder="Enter unique name for the copy"
-              className="w-full p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 outline-none"
-            />
-          </div>
-          
-          <div className="flex items-end">
-            <button
-              onClick={handleCreateCopy}
-              disabled={!copyName.trim() || isCreating}
-              className="w-full p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:opacity-50 text-white font-medium transition-colors"
-            >
-              {isCreating ? 'Creating...' : 'Create Copy'}
-            </button>
-          </div>
+    <div className="p-8 max-w-6xl mx-auto">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-8"
+      >
+        {/* Header */}
+        <div className="text-center">
+          <h2 className="text-4xl font-bold text-cyan-300 mb-2 flex items-center justify-center">
+            <Copy className="w-8 h-8 mr-3" />
+            Copy Engine
+          </h2>
+          <p className="text-cyan-200 text-lg">AI-powered copywriting assistant</p>
         </div>
 
-        {downloadUrl && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4 p-4 bg-green-900 bg-opacity-50 rounded-lg border border-green-500 border-opacity-30"
-          >
-            <div className="flex items-center space-x-2 mb-2">
-              <Download className="w-5 h-5 text-green-400" />
-              <span className="text-green-400 font-medium">Copy Ready for Download</span>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Left Panel - Input */}
+          <div className="space-y-6">
+            {/* Templates */}
+            <div className="bg-gray-900/70 rounded-2xl border border-cyan-500/20 p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-cyan-200 mb-4 flex items-center">
+                <FileText className="w-5 h-5 mr-2" />
+                Copy Templates
+              </h3>
+              {templatesLoading ? (
+                <div className="text-cyan-200">Loading templates...</div>
+              ) : templatesError ? (
+                <div className="text-red-400">{templatesError}</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {templates.map(template => (
+                    <motion.button
+                      key={template.id}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => useTemplate(template)}
+                      className={`p-4 rounded-lg border transition-all ${
+                        selectedTemplate?.id === template.id
+                          ? 'border-cyan-400 bg-cyan-900/20'
+                          : 'border-cyan-500/20 bg-gray-800/50 hover:border-cyan-400/40'
+                      }`}
+                    >
+                      <div className="text-cyan-100 font-medium text-sm">{template.name}</div>
+                      <div className="text-cyan-400 text-xs mt-1">{template.description}</div>
+                    </motion.button>
+                  ))}
+                  {templates.length === 0 && <div className="text-cyan-400 col-span-2">No templates found.</div>}
+                </div>
+              )}
             </div>
-            <a
-              href={downloadUrl}
-              download
-              className="text-cyan-400 hover:text-cyan-300 underline"
-            >
-              Download {copyName}.jarvis
-            </a>
-          </motion.div>
-        )}
 
-        <div className="mt-4 p-4 bg-yellow-900 bg-opacity-30 rounded-lg border border-yellow-500 border-opacity-30">
-          <div className="flex items-start space-x-2">
-            <Shield className="w-5 h-5 text-yellow-400 mt-0.5" />
-            <div>
-              <p className="text-yellow-400 font-medium text-sm">Security Notice</p>
-              <p className="text-gray-300 text-sm">
-                All copies are stripped of personal data, biometrics, and memories. 
-                They inherit only the AI improvements and cannot self-replicate.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Active Copies */}
-      <div className="flex-1 overflow-y-auto">
-        <h3 className="text-lg font-semibold text-cyan-300 mb-4 flex items-center">
-          <Users className="w-5 h-5 mr-2" />
-          Active Copies ({state.copies.length})
-        </h3>
-        
-        {state.copies.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
-            No copies created yet. Your first copy will appear here.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {state.copies.map((copy) => (
-              <motion.div
-                key={copy.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-gray-800 bg-opacity-50 rounded-lg p-4 hover:bg-opacity-70 transition-all"
+            {/* Prompt Input */}
+            <div className="bg-gray-900/70 rounded-2xl border border-cyan-500/20 p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-cyan-200 mb-4 flex items-center">
+                <Target className="w-5 h-5 mr-2" />
+                Copy Brief
+              </h3>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Describe what kind of copy you need... (e.g., 'Write a compelling product description for a smart home assistant')"
+                className="w-full p-4 rounded-lg bg-gray-800 text-cyan-100 border border-cyan-500/20 mb-4 focus:outline-none focus:border-cyan-400 transition resize-none"
+                rows={6}
+              />
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={generateCopy}
+                disabled={isGenerating || !prompt.trim()}
+                className="w-full py-3 px-6 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <h4 className="font-semibold text-cyan-200">{copy.name}</h4>
-                      <span className={`text-sm font-medium ${getStatusColor(copy.status)}`}>
-                        {copy.status}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-400 space-y-1">
-                      <p>Owner: {copy.owner}</p>
-                      <p>Created: {formatDate(copy.created)}</p>
-                      <p>ID: {copy.id}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <button className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-                      <Settings className="w-4 h-4" />
-                    </button>
-                    <button className="p-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors">
-                      <X className="w-4 h-4" />
-                    </button>
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="w-5 h-5 mr-2" />
+                    Generate Copy
+                  </>
+                )}
+              </motion.button>
+              {generateError && <div className="text-red-400 mt-2">{generateError}</div>}
+            </div>
+          </div>
+
+          {/* Right Panel - Output */}
+          <div className="space-y-6">
+            {/* Generated Copy */}
+            {generatedCopy && (
+              <div className="bg-gray-900/70 rounded-2xl border border-cyan-500/20 p-6 shadow-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-cyan-200 flex items-center">
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Generated Copy
+                  </h3>
+                  <div className="flex space-x-2">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => copyToClipboard(generatedCopy)}
+                      className="p-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white transition"
+                      title="Copy to clipboard"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => downloadCopy(generatedCopy)}
+                      className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition"
+                      title="Download copy"
+                    >
+                      <Download className="w-4 h-4" />
+                    </motion.button>
                   </div>
                 </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </div>
+                <div className="bg-gray-800/50 rounded-lg p-4 border border-cyan-500/10">
+                  <pre className="text-cyan-100 whitespace-pre-wrap text-sm leading-relaxed">
+                    {generatedCopy}
+                  </pre>
+                </div>
+              </div>
+            )}
 
-      {/* Master Controls */}
-      <div className="mt-6 pt-4 border-t border-gray-700">
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-400">
-            Master J.A.R.V.I.S can monitor and control all copies
-          </div>
-          <div className="flex items-center space-x-2">
-            <button className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm font-medium transition-colors">
-              Update All Copies
-            </button>
-            <button className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
-              Emergency Shutdown
-            </button>
+            {/* Copy History */}
+            <div className="bg-gray-900/70 rounded-2xl border border-cyan-500/20 p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-cyan-200 mb-4">Recent Copies</h3>
+              {historyLoading ? (
+                <div className="text-cyan-200">Loading history...</div>
+              ) : historyError ? (
+                <div className="text-red-400">{historyError}</div>
+              ) : (
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {copyHistory.map((copy, index) => (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="bg-gray-800/50 rounded-lg p-3 border border-cyan-500/10 hover:border-cyan-400/30 transition"
+                    >
+                      <div className="text-cyan-100 text-sm line-clamp-2 mb-2">
+                        {copy.substring(0, 100)}...
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-cyan-400 text-xs">
+                          {new Date().toLocaleTimeString()}
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(copy)}
+                          className="text-cyan-400 hover:text-cyan-300 text-xs"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                  {copyHistory.length === 0 && <div className="text-cyan-400">No copies yet.</div>}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </div>
   );
 };

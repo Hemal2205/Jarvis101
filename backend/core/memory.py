@@ -6,160 +6,161 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import uuid
 import os
+from sqlalchemy.orm import Session
+from .models import Memory as MemoryModel, User as UserModel
+from .notification_manager import NotificationManager
 
 logger = logging.getLogger(__name__)
 
+notification_manager = NotificationManager()
+
 class MemoryVault:
-    """Enhanced memory management system for J.A.R.V.I.S"""
+    """Enhanced memory management system for J.A.R.V.I.S (SQLAlchemy version)"""
     
     def __init__(self):
-        self.memories = {}
-        self.memory_index = {}
-        self.emotional_journal = []
-        self.memory_dir = "data/memory"
-        self.backup_dir = "data/backups"
-        
-        # Ensure directories exist
-        os.makedirs(self.memory_dir, exist_ok=True)
-        os.makedirs(self.backup_dir, exist_ok=True)
+        pass  # No in-memory or file-based storage
     
-    async def initialize(self):
+    async def initialize(self, db: Session):
         """Initialize the memory vault asynchronously"""
-        await self._load_memories()
-        await self._load_emotional_journal()
+        # No initialization needed for file-based storage
+        pass
     
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self, db: Session) -> Dict[str, Any]:
         """Get memory vault status"""
+        total_memories = db.query(MemoryModel).count()
+        emotional_entries = db.query(MemoryModel).count() # Assuming all memories are journal entries for now
+        memory_types = db.query(MemoryModel.type).distinct().all()
+        emotions_detected = db.query(MemoryModel.emotion).distinct().all()
+        users_with_memories = db.query(UserModel.username).distinct().count()
+        storage_size = "N/A (SQLAlchemy)" # No direct file size in SQLAlchemy
         return {
-            "total_memories": len(self.memories),
-            "emotional_entries": len(self.emotional_journal),
-            "memory_types": self._get_memory_types(),
-            "emotions_detected": self._get_emotions(),
-            "users_with_memories": len(set(m.get('user', 'unknown') for m in self.memories.values())),
-            "storage_size": self._calculate_storage_size()
+            "total_memories": total_memories,
+            "emotional_entries": emotional_entries,
+            "memory_types": [t[0] for t in memory_types],
+            "emotions_detected": [e[0] for e in emotions_detected],
+            "users_with_memories": users_with_memories,
+            "storage_size": storage_size
         }
     
-    def _get_memory_types(self) -> List[str]:
-        """Get unique memory types"""
-        return list(set(m.get('type', 'unknown') for m in self.memories.values()))
-    
-    def _get_emotions(self) -> List[str]:
-        """Get unique emotions detected"""
-        return list(set(m.get('emotion', 'neutral') for m in self.memories.values()))
-    
-    def _calculate_storage_size(self) -> str:
-        """Calculate approximate storage size"""
-        total_chars = sum(len(str(memory)) for memory in self.memories.values())
-        size_kb = total_chars / 1024
-        return f"{size_kb:.2f} KB"
-    
-    async def create_memory(self, memory_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_memory(self, db: Session, memory_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create and store a new memory"""
         try:
-            memory_id = str(uuid.uuid4())
-            
-            # Extract memory details
-            content = memory_data.get("content", "")
-            memory_type = memory_data.get("type", "text")
-            user = memory_data.get("user", "Hemal")
-            
-            # Analyze emotion
-            emotion = await self._analyze_emotion(content)
-            
-            # Calculate importance
-            importance = await self._calculate_importance(content)
-            
-            # Extract tags
-            tags = await self._extract_tags(content)
-            
-            # Create memory object
-            memory = {
-                "id": memory_id,
-                "content": content,
-                "type": memory_type,
-                "user": user,
-                "timestamp": datetime.now().isoformat(),
-                "emotion": emotion,
-                "importance": importance,
-                "tags": tags,
-                "access_count": 0,
-                "last_accessed": None
-            }
-            
-            # Store memory
-            self.memories[memory_id] = memory
-            
-            # Update index
-            await self._update_memory_index(memory)
-            
-            # Save to storage
-            await self._save_memories()
-            
-            # Add to emotional journal
-            await self._add_journal_entry(f"New memory recorded: {content[:100]}...")
-            
-            logger.info(f"Memory created: {memory_id}")
-            
-            return {
-                "success": True,
-                "memory_id": memory_id,
-                "memory": memory
-            }
-            
+            user = db.query(UserModel).filter_by(username=memory_data.get("user", "Hemal")).first()
+            if not user:
+                return {"success": False, "error": "User not found"}
+            memory = MemoryModel(
+                user_id=user.id,
+                type=memory_data.get("type", "text"),
+                content=memory_data.get("content", ""),
+                emotion=memory_data.get("emotion"),
+                timestamp=datetime.now(),
+                extra_data={
+                    "importance": memory_data.get("importance"),
+                    "tags": memory_data.get("tags", []),
+                    "access_count": 0,
+                    "last_accessed": None
+                }
+            )
+            db.add(memory)
+            db.commit()
+            db.refresh(memory)
+            # Create notification for new memory
+            notification_manager.create_notification(
+                db,
+                user_id=user.id,
+                message=f'New memory added: {memory.content[:40]}',
+                type="memory",
+                data={"memory_id": memory.id, "memory_type": memory.type}
+            )
+            return {"success": True, "memory_id": memory.id, "memory": {
+                "id": memory.id,
+                "content": memory.content,
+                "type": memory.type,
+                "user": user.username,
+                "timestamp": memory.timestamp.isoformat(),
+                "emotion": memory.emotion,
+                "importance": memory.extra_data.get("importance"),
+                "tags": memory.extra_data.get("tags", []),
+                "access_count": memory.extra_data.get("access_count", 0),
+                "last_accessed": memory.extra_data.get("last_accessed")
+            }}
         except Exception as e:
             logger.error(f"Memory creation failed: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
     
-    async def get_memories(self, user: str = "Hemal", limit: int = 50) -> List[Dict[str, Any]]:
+    async def get_memories(self, db: Session, user: str = "Hemal", limit: int = 50) -> List[Dict[str, Any]]:
         """Get memories for a user"""
         try:
-            user_memories = []
-            
-            for memory in self.memories.values():
-                if memory.get("user") == user:
-                    # Update access count
-                    memory["access_count"] = memory.get("access_count", 0) + 1
-                    memory["last_accessed"] = datetime.now().isoformat()
-                    user_memories.append(memory)
-            
-            # Sort by timestamp (newest first)
-            user_memories.sort(key=lambda x: x["timestamp"], reverse=True)
-            
-            # Apply limit
-            return user_memories[:limit]
-            
+            user_obj = db.query(UserModel).filter_by(username=user).first()
+            if not user_obj:
+                return []
+            memories = db.query(MemoryModel).filter_by(user_id=user_obj.id).order_by(MemoryModel.timestamp.desc()).limit(limit).all()
+            result = []
+            for memory in memories:
+                # Optionally update access_count and last_accessed
+                extra_data = memory.extra_data or {}
+                extra_data["access_count"] = extra_data.get("access_count", 0) + 1
+                extra_data["last_accessed"] = datetime.now().isoformat()
+                memory.extra_data = extra_data
+                db.commit()
+                result.append({
+                    "id": memory.id,
+                    "content": memory.content,
+                    "type": memory.type,
+                    "user": user_obj.username,
+                    "timestamp": memory.timestamp.isoformat(),
+                    "emotion": memory.emotion,
+                    "importance": extra_data.get("importance"),
+                    "tags": extra_data.get("tags", []),
+                    "access_count": extra_data.get("access_count", 0),
+                    "last_accessed": extra_data.get("last_accessed")
+                })
+            return result
         except Exception as e:
             logger.error(f"Failed to get memories: {e}")
             return []
     
-    async def search_memories(self, query: str, user: str = "Hemal") -> List[Dict[str, Any]]:
+    async def search_memories(self, db: Session, query: str, user: str = "Hemal") -> List[Dict[str, Any]]:
         """Search memories by content, tags, or emotion"""
         try:
             matching_memories = []
             query_lower = query.lower()
             
-            for memory in self.memories.values():
-                if memory.get("user") == user:
-                    # Search in content
-                    if query_lower in memory.get("content", "").lower():
-                        matching_memories.append(memory)
-                    # Search in tags
-                    elif any(query_lower in tag.lower() for tag in memory.get("tags", [])):
-                        matching_memories.append(memory)
-                    # Search by emotion
-                    elif query_lower == memory.get("emotion", "").lower():
-                        matching_memories.append(memory)
+            user_obj = db.query(UserModel).filter_by(username=user).first()
+            if not user_obj:
+                return []
+
+            memories = db.query(MemoryModel).filter_by(user_id=user_obj.id).all()
+
+            for memory in memories:
+                # Search in content
+                if query_lower in memory.content.lower():
+                    matching_memories.append(memory)
+                # Search in tags
+                elif any(query_lower in tag.lower() for tag in memory.extra_data.get("tags", [])):
+                    matching_memories.append(memory)
+                # Search by emotion
+                elif query_lower == memory.emotion.lower():
+                    matching_memories.append(memory)
             
             # Sort by importance and recency
             matching_memories.sort(
-                key=lambda x: (x.get("importance", 0), x["timestamp"]), 
+                key=lambda x: (x.extra_data.get("importance", 0), x.timestamp), 
                 reverse=True
             )
             
-            return matching_memories
+            return [{
+                "id": m.id,
+                "content": m.content,
+                "type": m.type,
+                "user": user_obj.username,
+                "timestamp": m.timestamp.isoformat(),
+                "emotion": m.emotion,
+                "importance": m.extra_data.get("importance"),
+                "tags": m.extra_data.get("tags", []),
+                "access_count": m.extra_data.get("access_count", 0),
+                "last_accessed": m.extra_data.get("last_accessed")
+            } for m in matching_memories]
             
         except Exception as e:
             logger.error(f"Memory search failed: {e}")
@@ -259,108 +260,26 @@ class MemoryVault:
     
     async def _update_memory_index(self, memory: Dict[str, Any]):
         """Update memory search index for faster retrieval"""
-        try:
-            user = memory["user"]
-            if user not in self.memory_index:
-                self.memory_index[user] = {
-                    "by_date": {},
-                    "by_emotion": {},
-                    "by_tags": {},
-                    "by_importance": {}
-                }
-            
-            # Index by date
-            date_key = memory["timestamp"][:10]  # YYYY-MM-DD
-            if date_key not in self.memory_index[user]["by_date"]:
-                self.memory_index[user]["by_date"][date_key] = []
-            self.memory_index[user]["by_date"][date_key].append(memory["id"])
-            
-            # Index by emotion
-            emotion = memory["emotion"]
-            if emotion not in self.memory_index[user]["by_emotion"]:
-                self.memory_index[user]["by_emotion"][emotion] = []
-            self.memory_index[user]["by_emotion"][emotion].append(memory["id"])
-            
-            # Index by tags
-            for tag in memory["tags"]:
-                if tag not in self.memory_index[user]["by_tags"]:
-                    self.memory_index[user]["by_tags"][tag] = []
-                self.memory_index[user]["by_tags"][tag].append(memory["id"])
-            
-        except Exception as e:
-            logger.error(f"Failed to update memory index: {e}")
+        # This method is no longer needed as all data is in the database
+        pass
     
     async def _add_journal_entry(self, entry: str):
         """Add entry to J.A.R.V.I.S's emotional journal"""
-        try:
-            journal_entry = {
-                "id": str(uuid.uuid4()),
-                "entry": entry,
-                "timestamp": datetime.now().isoformat(),
-                "emotion": await self._analyze_emotion(entry)
-            }
-            
-            self.emotional_journal.append(journal_entry)
-            
-            # Keep only last 1000 entries
-            if len(self.emotional_journal) > 1000:
-                self.emotional_journal = self.emotional_journal[-1000:]
-            
-            await self._save_emotional_journal()
-            
-        except Exception as e:
-            logger.error(f"Failed to add journal entry: {e}")
+        # This method is no longer needed as all data is in the database
+        pass
     
     async def _load_memories(self):
         """Load memories from storage"""
-        try:
-            memories_file = os.path.join(self.memory_dir, "memories.json")
-            if os.path.exists(memories_file):
-                async with aiofiles.open(memories_file, 'r') as f:
-                    content = await f.read()
-                    self.memories = json.loads(content)
-                logger.info(f"Loaded {len(self.memories)} memories")
-            else:
-                self.memories = {}
-                logger.info("No existing memories found")
-        except Exception as e:
-            logger.error(f"Failed to load memories: {e}")
-            self.memories = {}
+        pass
     
     async def _save_memories(self):
         """Save memories to storage"""
-        try:
-            memories_file = os.path.join(self.memory_dir, "memories.json")
-            async with aiofiles.open(memories_file, 'w') as f:
-                content = json.dumps(self.memories, indent=2)
-                await f.write(content)
-            logger.info("Memories saved")
-        except Exception as e:
-            logger.error(f"Failed to save memories: {e}")
+        pass
     
     async def _load_emotional_journal(self):
         """Load emotional journal from storage"""
-        try:
-            journal_file = os.path.join(self.memory_dir, "emotional_journal.json")
-            if os.path.exists(journal_file):
-                async with aiofiles.open(journal_file, 'r') as f:
-                    content = await f.read()
-                    self.emotional_journal = json.loads(content)
-                logger.info(f"Loaded {len(self.emotional_journal)} journal entries")
-            else:
-                self.emotional_journal = []
-                logger.info("No existing journal entries found")
-        except Exception as e:
-            logger.error(f"Failed to load emotional journal: {e}")
-            self.emotional_journal = []
+        pass
     
     async def _save_emotional_journal(self):
         """Save emotional journal to storage"""
-        try:
-            journal_file = os.path.join(self.memory_dir, "emotional_journal.json")
-            async with aiofiles.open(journal_file, 'w') as f:
-                content = json.dumps(self.emotional_journal, indent=2)
-                await f.write(content)
-            logger.info("Emotional journal saved")
-        except Exception as e:
-            logger.error(f"Failed to save emotional journal: {e}")
+        pass

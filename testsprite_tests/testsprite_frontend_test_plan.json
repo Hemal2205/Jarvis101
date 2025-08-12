@@ -1,0 +1,530 @@
+[
+  {
+    "id": "TC001",
+    "title": "Biometric Authentication Success",
+    "description": "Verify that user can successfully authenticate with valid face and voice biometrics with liveness detection under normal conditions.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Launch JARVIS AI Assistant application."
+      },
+      {
+        "type": "action",
+        "description": "Initiate biometric authentication."
+      },
+      {
+        "type": "action",
+        "description": "Provide valid face biometric with live facial movement."
+      },
+      {
+        "type": "action",
+        "description": "Provide valid voice biometric with live voice input."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify authentication is successful and access granted to AI Brain."
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Biometric Authentication Failure on Spoofing",
+    "description": "Verify that authentication fails when presented with spoofed biometric data (photos, recordings) failing liveness detection.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Launch application and start biometric authentication."
+      },
+      {
+        "type": "action",
+        "description": "Present a high-quality photo of authorized user's face."
+      },
+      {
+        "type": "action",
+        "description": "Present a recorded voice clip of authorized user."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that authentication fails due to liveness detection rejection."
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Multi-LLM AI Brain Conversation and Code Generation",
+    "description": "Verify that the AI Brain integrates multiple LLMs to perform reasoning, planning, conversation, and code generation accurately.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Authenticate and access AI Brain interface."
+      },
+      {
+        "type": "action",
+        "description": "Initiate a natural language conversation requesting reasoning on given data."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify AI provides accurate, multi-step reasoning output."
+      },
+      {
+        "type": "action",
+        "description": "Request AI to generate sample code snippet for a defined task."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify generated code is syntactically correct and relevant."
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Memory Vault Secure Storage and Playback",
+    "description": "Validate encrypted storage of memories and secure playback from the Memory Vault.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Store a new personal memory with metadata in Memory Vault."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm memory is encrypted and stored successfully."
+      },
+      {
+        "type": "action",
+        "description": "Retrieve and play the stored memory."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify correct playback without decryption errors or data leaks."
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Stealth Mode Anti-Detection Functionality",
+    "description": "Test that Stealth Modes effectively bypass proctoring detection in exam mode without affecting legitimate usage.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Activate exam stealth mode with anti-detection overlays."
+      },
+      {
+        "type": "action",
+        "description": "Simulate a typical proctoring environment monitoring for detection."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm no proctoring detection flags issued during stealth usage."
+      },
+      {
+        "type": "action",
+        "description": "Verify normal system usability and control are maintained."
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "System Automation Workflow Execution",
+    "description": "Verify user-configured automation workflows on desktop, browser, cloud, and smart home devices execute successfully.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Configure an automation workflow to open application, run script, and control a smart home device."
+      },
+      {
+        "type": "action",
+        "description": "Trigger the automation workflow manually."
+      },
+      {
+        "type": "assertion",
+        "description": "Validate execution of desktop application launch and script completion."
+      },
+      {
+        "type": "assertion",
+        "description": "Validate smart home device responds as configured."
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Copy Engine License Enforcement",
+    "description": "Verify that the Copy Engine enforces licensing and master control preventing unauthorized AI copy usage.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Attempt to clone an AI copy without proper licensing."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify cloning is denied and license violation alerts are generated."
+      },
+      {
+        "type": "action",
+        "description": "Clone AI copy with valid license key."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify cloning succeeds and master control policies apply."
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Autonomous Evolution - Code Refactoring and Rollback",
+    "description": "Test that Autonomous Evolution performs code refactoring and optimization without introducing instability and allows rollback.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Trigger autonomous code refactoring process."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify refactored code is deployed without runtime errors."
+      },
+      {
+        "type": "action",
+        "description": "Intentionally cause instability and request rollback."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm system rolls back to last stable version successfully."
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Predictive Task Management Prioritization and Analytics",
+    "description": "Verify AI-driven task prioritization and analytics improve user productivity metrics.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Add multiple tasks with varying deadlines and importance."
+      },
+      {
+        "type": "action",
+        "description": "Enable predictive task management AI prioritization."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify tasks are reordered based on predicted importance and deadlines."
+      },
+      {
+        "type": "action",
+        "description": "Complete tasks as per AI recommendations."
+      },
+      {
+        "type": "assertion",
+        "description": "Observe improvement in user productivity metrics and analytics dashboard updates."
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "AI Content Creation Multi-format Generation",
+    "description": "Validate AI Content Creation Suite can generate accurate and relevant multi-format content for blogs, emails, and reports.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Select content type as blog post and provide prompt."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify output is coherent, relevant, and properly formatted."
+      },
+      {
+        "type": "action",
+        "description": "Select content type as email and repeat generation."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify email content is appropriate with subject and body."
+      },
+      {
+        "type": "action",
+        "description": "Select content type as report and generate."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify report contains structured sections and data as requested."
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Environmental & Health Suite Real-time Monitoring and Alerts",
+    "description": "Test real-time health and environmental monitoring suite with reminder and alert functionality.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Activate Environmental & Health Suite and configure health parameters to monitor."
+      },
+      {
+        "type": "action",
+        "description": "Simulate environmental condition changes and health parameter deviations."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify real-time metrics update on dashboard."
+      },
+      {
+        "type": "assertion",
+        "description": "Check that reminders and alerts are generated when thresholds breach."
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Real-time Monitoring & Analytics System Metrics",
+    "description": "Verify system captures and displays real-time system metrics and user activity with performance alerts.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Open Monitoring Dashboard."
+      },
+      {
+        "type": "action",
+        "description": "Perform high CPU and memory load operations."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm real-time system metrics reflect high load conditions."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify performance alerts are triggered and logged."
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "3D Cinematic HUD Rendering and Interaction",
+    "description": "Validate the 3D Cinematic HUD renders correctly with smooth animations and user interactions.",
+    "category": "ui",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Switch to 3D Cinematic HUD mode."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify HUD renders with holographic and animated elements smoothly."
+      },
+      {
+        "type": "action",
+        "description": "Interact with HUD controls (e.g., open panels, refresh data)."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm user interactions produce expected responses without lag or errors."
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "VR Workspace Functionality and Immersive Interaction",
+    "description": "Test that the VR Workspace provides immersive experience with virtual reality panels and interactive environment.",
+    "category": "ui",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Enter VR Workspace mode with compatible hardware."
+      },
+      {
+        "type": "assertion",
+        "description": "Check for correct rendering of virtual panels and environment."
+      },
+      {
+        "type": "action",
+        "description": "Perform standard VR interactions such as panel selection, resizing, and movement."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify interactions are smooth and reflected immediately."
+      }
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "Smart Home Integration Device Control",
+    "description": "Verify Smart Home Integration allows device control, automation rule setup, and remote access.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Connect compatible smart home devices through the dashboard."
+      },
+      {
+        "type": "action",
+        "description": "Turn on/off devices manually through UI controls."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify device states change accordingly."
+      },
+      {
+        "type": "action",
+        "description": "Create and activate an automation rule (e.g., turn off lights at 10 PM)."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm automation triggers correctly at scheduled time."
+      },
+      {
+        "type": "action",
+        "description": "Control devices remotely from outside local network."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify commands succeed and response times are acceptable."
+      }
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Authentication Failure with Invalid Biometrics",
+    "description": "Verify that authentication is rejected when invalid biometrics with allowed liveness detection attempts are provided.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Attempt login with incorrect face biometric."
+      },
+      {
+        "type": "action",
+        "description": "Attempt login with incorrect voice biometric."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify authentication fails with appropriate error messages for each case."
+      }
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "Predictive Task Management Handles Empty and Large Task Lists",
+    "description": "Validate behavior of predictive task manager with no tasks and with a very large number of tasks.",
+    "category": "error handling",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Open predictive task management with empty task list."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm UI handles empty list gracefully without errors."
+      },
+      {
+        "type": "action",
+        "description": "Import or create a large task list (1000+ tasks)."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify AI prioritization completes without performance degradation or crashes."
+      }
+    ]
+  },
+  {
+    "id": "TC018",
+    "title": "Memory Vault Access Denied Without Authentication",
+    "description": "Verify that Memory Vault data cannot be accessed if user is not authenticated properly.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Attempt to access Memory Vault without biometric authentication."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access is denied with appropriate security warning."
+      }
+    ]
+  },
+  {
+    "id": "TC019",
+    "title": "Stealth Mode Switch Between Different Profiles",
+    "description": "Test switching between Exam, Interview, and Passive Copilot stealth modes without overlap or data leakage.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Activate Exam Stealth Mode."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify correct overlay and anti-detection features enabled."
+      },
+      {
+        "type": "action",
+        "description": "Switch to Interview Stealth Mode."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm Exam mode terminates cleanly and Interview mode activates properly."
+      },
+      {
+        "type": "action",
+        "description": "Switch to Passive Copilot mode."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm overlays update and no residual exam/interview mode elements remain."
+      }
+    ]
+  },
+  {
+    "id": "TC020",
+    "title": "System Automation Error Handling with Invalid Rules",
+    "description": "Verify system automation handles invalid or conflicting automation rules gracefully with error messages.",
+    "category": "error handling",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Create an automation rule with invalid device identifier."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify rule creation is prevented or flagged with error message."
+      },
+      {
+        "type": "action",
+        "description": "Create conflicting automation rules for the same device."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify system alerts user and prevents conflicting execution."
+      }
+    ]
+  }
+]

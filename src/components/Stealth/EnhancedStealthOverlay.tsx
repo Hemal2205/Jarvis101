@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, Volume2, VolumeX, Target, Brain, Shield, Zap, CheckCircle, AlertCircle } from 'lucide-react';
+import { 
+  Target, Brain, Shield, Mic, MicOff, Maximize2, Minimize2 
+} from 'lucide-react';
 
 interface StealthOverlayProps {
   mode: 'stealth-exam' | 'stealth-interview' | 'passive-copilot';
@@ -14,14 +16,27 @@ interface Answer {
   confidence: number;
   timestamp: string;
   sources?: string[];
+  processing_time?: number;
+  model_used?: string;
 }
 
 interface StealthStatus {
-  proctoring_bypass: boolean;
+  is_active: boolean;
+  current_mode: string;
+  hardware_fingerprint: string;
+  proctoring_bypass_status: {
+    active_bypasses: number;
+    hardware_fingerprint: string;
+    original_fingerprint: string;
+    bypass_methods: string[];
+  };
   screen_monitoring: boolean;
-  answer_generation: boolean;
-  overlay_hidden: boolean;
-  detection_risk: 'low' | 'medium' | 'high';
+  audio_monitoring: boolean;
+  queue_sizes: {
+    questions: number;
+    answers: number;
+    audio: number;
+  };
 }
 
 const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive }) => {
@@ -30,37 +45,14 @@ const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive 
   const [isOverlayVisible, setIsOverlayVisible] = useState(true);
   const [opacity, setOpacity] = useState(0.9);
   const [position, setPosition] = useState({ x: 50, y: 50 });
-  const [stealthStatus, setStealthStatus] = useState<StealthStatus>({
-    proctoring_bypass: false,
-    screen_monitoring: false,
-    answer_generation: false,
-    overlay_hidden: false,
-    detection_risk: 'low'
-  });
+  const [stealthStatus, setStealthStatus] = useState<StealthStatus | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
-  const [autoHide, setAutoHide] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isListening, setIsListening] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (isActive) {
-      initializeStealthMode();
-      startMonitoring();
-    } else {
-      cleanup();
-    }
-  }, [isActive, mode]);
-
-  useEffect(() => {
-    // Auto-hide overlay when not in use
-    if (autoHide && answers.length === 0) {
-      const timer = setTimeout(() => {
-        setIsOverlayVisible(false);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [answers, autoHide]);
-
-  const initializeStealthMode = async () => {
+  const initializeStealthMode = useCallback(async () => {
     try {
       const response = await fetch('/api/stealth/activate', {
         method: 'POST',
@@ -71,17 +63,32 @@ const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive 
       const result = await response.json();
       
       if (result.status === 'success') {
-        setStealthStatus(prev => ({
-          ...prev,
-          proctoring_bypass: true,
-          screen_monitoring: true,
-          answer_generation: true
-        }));
+        console.log('Advanced stealth mode activated:', result.features);
       }
     } catch (error) {
       console.error('Stealth mode initialization error:', error);
     }
-  };
+  }, [mode]);
+
+  useEffect(() => {
+    if (isActive) {
+      initializeStealthMode();
+      startMonitoring();
+      startStatusPolling();
+    } else {
+      cleanup();
+    }
+  }, [isActive, mode, initializeStealthMode]);
+
+  useEffect(() => {
+    // Auto-hide overlay when not in use
+    if (answers.length === 0) {
+      const timer = setTimeout(() => {
+        setIsOverlayVisible(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [answers]);
 
   const startMonitoring = () => {
     // Poll for new answers
@@ -103,10 +110,26 @@ const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive 
     return () => clearInterval(interval);
   };
 
+  const startStatusPolling = () => {
+    // Poll for stealth status
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch('/api/stealth/status');
+        const status = await response.json();
+        setStealthStatus(status);
+      } catch (error) {
+        console.error('Status polling error:', error);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  };
+
   const cleanup = () => {
     setAnswers([]);
     setCurrentAnswer(null);
     setIsOverlayVisible(false);
+    setStealthStatus(null);
   };
 
   const toggleOverlayVisibility = () => {
@@ -130,61 +153,85 @@ const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive 
     });
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (overlayRef.current) {
+      const rect = overlayRef.current.getBoundingClientRect();
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+      setIsDragging(true);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && overlayRef.current) {
+      const newX = ((e.clientX - dragOffset.x) / window.innerWidth) * 100;
+      const newY = ((e.clientY - dragOffset.y) / window.innerHeight) * 100;
+      
+      setPosition({
+        x: Math.max(0, Math.min(90, newX)),
+        y: Math.max(0, Math.min(90, newY))
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
   const getOverlayStyle = () => {
+    const baseStyle = {
+      position: 'fixed' as const,
+      top: `${position.y}%`,
+      left: `${position.x}%`,
+      transform: 'translate(-50%, -50%)',
+      opacity: opacity,
+      zIndex: 9999,
+      pointerEvents: 'auto' as const,
+      backdropFilter: 'blur(10px)',
+      borderRadius: '8px',
+      padding: '12px',
+      maxWidth: '400px',
+      fontSize: '12px',
+      fontFamily: 'monospace',
+      cursor: isDragging ? 'grabbing' : 'grab',
+      userSelect: 'none' as const,
+      border: '1px solid rgba(0, 255, 255, 0.3)',
+      background: 'rgba(0, 0, 0, 0.8)',
+      transition: isDragging ? 'none' : 'all 0.3s ease'
+    };
+
     if (mode === 'stealth-exam') {
       return {
-        position: 'fixed' as const,
-        top: `${position.y}%`,
-        left: `${position.x}%`,
-        transform: 'translate(-50%, -50%)',
-        opacity: opacity,
-        zIndex: 9999,
-        pointerEvents: 'auto' as const,
-        backdropFilter: 'blur(10px)',
-        background: 'rgba(0, 0, 0, 0.8)',
-        border: '1px solid rgba(0, 255, 255, 0.3)',
-        borderRadius: '8px',
-        padding: '12px',
-        maxWidth: '400px',
-        fontSize: '12px',
-        fontFamily: 'monospace'
+        ...baseStyle,
+        background: 'rgba(0, 0, 0, 0.9)',
+        border: '1px solid rgba(255, 0, 0, 0.3)'
       };
     } else if (mode === 'stealth-interview') {
       return {
-        position: 'fixed' as const,
-        bottom: '20px',
-        right: '20px',
-        opacity: opacity,
-        zIndex: 9999,
-        pointerEvents: 'auto' as const,
-        background: 'rgba(0, 0, 0, 0.9)',
-        border: '1px solid rgba(255, 255, 255, 0.2)',
-        borderRadius: '8px',
-        padding: '16px',
-        maxWidth: '350px',
-        fontSize: '14px'
+        ...baseStyle,
+        background: 'rgba(0, 0, 0, 0.85)',
+        border: '1px solid rgba(0, 255, 0, 0.3)'
       };
     } else {
       return {
-        position: 'fixed' as const,
-        top: '50%',
-        right: '20px',
-        transform: 'translateY(-50%)',
-        opacity: opacity,
-        zIndex: 9999,
-        pointerEvents: 'auto' as const,
-        background: 'rgba(0, 0, 0, 0.7)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: '8px',
-        padding: '12px',
-        maxWidth: '300px',
-        fontSize: '13px'
+        ...baseStyle,
+        background: 'rgba(0, 0, 0, 0.75)',
+        border: '1px solid rgba(255, 255, 255, 0.2)'
       };
     }
   };
 
   const renderExamMode = () => (
-    <div style={getOverlayStyle()}>
+    <div 
+      ref={overlayRef}
+      style={getOverlayStyle()}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-2">
           <Shield className="w-4 h-4 text-green-400" />
@@ -195,7 +242,7 @@ const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive 
             onClick={() => setIsMinimized(!isMinimized)}
             className="p-1 hover:bg-gray-700 rounded"
           >
-            {isMinimized ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+            {isMinimized ? <Maximize2 className="w-3 h-3" /> : <Minimize2 className="w-3 h-3" />}
           </button>
           <button
             onClick={toggleOverlayVisibility}
@@ -209,23 +256,20 @@ const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive 
       {/* Status Indicators */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="flex items-center space-x-1">
-          <div className={`w-2 h-2 rounded-full ${stealthStatus.proctoring_bypass ? 'bg-green-400' : 'bg-red-400'}`} />
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.proctoring_bypass_status?.active_bypasses ? 'bg-green-400' : 'bg-red-400'}`} />
           <span className="text-xs text-gray-300">Bypass</span>
         </div>
         <div className="flex items-center space-x-1">
-          <div className={`w-2 h-2 rounded-full ${stealthStatus.screen_monitoring ? 'bg-green-400' : 'bg-red-400'}`} />
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.screen_monitoring ? 'bg-green-400' : 'bg-red-400'}`} />
           <span className="text-xs text-gray-300">Monitor</span>
         </div>
         <div className="flex items-center space-x-1">
-          <div className={`w-2 h-2 rounded-full ${stealthStatus.answer_generation ? 'bg-green-400' : 'bg-red-400'}`} />
-          <span className="text-xs text-gray-300">Answers</span>
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.audio_monitoring ? 'bg-green-400' : 'bg-red-400'}`} />
+          <span className="text-xs text-gray-300">Audio</span>
         </div>
         <div className="flex items-center space-x-1">
-          <div className={`w-2 h-2 rounded-full ${
-            stealthStatus.detection_risk === 'low' ? 'bg-green-400' : 
-            stealthStatus.detection_risk === 'medium' ? 'bg-yellow-400' : 'bg-red-400'
-          }`} />
-          <span className="text-xs text-gray-300">Risk</span>
+          <div className={`w-2 h-2 rounded-full ${answers.length > 0 ? 'bg-green-400' : 'bg-yellow-400'}`} />
+          <span className="text-xs text-gray-300">Queue</span>
         </div>
       </div>
 
@@ -249,52 +293,61 @@ const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive 
             <span className="text-gray-400">
               Confidence: {Math.round(currentAnswer.confidence * 100)}%
             </span>
-            <span className="text-gray-400">
-              Type: {currentAnswer.type}
-            </span>
+            {currentAnswer.processing_time && (
+              <span className="text-gray-400">
+                {currentAnswer.processing_time.toFixed(2)}s
+              </span>
+            )}
           </div>
+
+          {currentAnswer.model_used && (
+            <div className="text-xs text-gray-500 mt-1">
+              Model: {currentAnswer.model_used}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Quick Controls */}
-      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-700">
-        <div className="flex items-center space-x-1">
+      {/* Controls */}
+      <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-700">
+        <div className="flex items-center space-x-2">
           <button
             onClick={() => adjustOpacity(-0.1)}
-            className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+            className="p-1 hover:bg-gray-700 rounded text-xs"
           >
             -
           </button>
           <span className="text-xs text-gray-400">{Math.round(opacity * 100)}%</span>
           <button
             onClick={() => adjustOpacity(0.1)}
-            className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+            className="p-1 hover:bg-gray-700 rounded text-xs"
           >
             +
           </button>
         </div>
+        
         <div className="flex items-center space-x-1">
           <button
+            onClick={() => moveOverlay('left')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            ←
+          </button>
+          <button
             onClick={() => moveOverlay('up')}
-            className="px-1 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+            className="p-1 hover:bg-gray-700 rounded text-xs"
           >
             ↑
           </button>
           <button
             onClick={() => moveOverlay('down')}
-            className="px-1 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+            className="p-1 hover:bg-gray-700 rounded text-xs"
           >
             ↓
           </button>
           <button
-            onClick={() => moveOverlay('left')}
-            className="px-1 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
-          >
-            ←
-          </button>
-          <button
             onClick={() => moveOverlay('right')}
-            className="px-1 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+            className="p-1 hover:bg-gray-700 rounded text-xs"
           >
             →
           </button>
@@ -304,121 +357,310 @@ const EnhancedStealthOverlay: React.FC<StealthOverlayProps> = ({ mode, isActive 
   );
 
   const renderInterviewMode = () => (
-    <div style={getOverlayStyle()}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-2">
-          <Brain className="w-4 h-4 text-blue-400" />
-          <span className="text-blue-400 font-bold">INTERVIEW MODE</span>
-        </div>
-        <button
-          onClick={() => setIsMinimized(!isMinimized)}
-          className="p-1 hover:bg-gray-700 rounded"
-        >
-          {isMinimized ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-        </button>
-      </div>
-
-      {!isMinimized && (
-        <div>
-          <div className="mb-3">
-            <div className="text-sm text-green-400 mb-1">Listening...</div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div className="bg-green-400 h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
-            </div>
-          </div>
-
-          {currentAnswer && (
-            <div>
-              <div className="mb-2">
-                <div className="text-sm text-yellow-400 mb-1">Suggested Response:</div>
-                <div className="text-sm text-white bg-gray-800 p-3 rounded">
-                  {typeof currentAnswer.answer === 'string' ? currentAnswer.answer : currentAnswer.answer.answer}
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">
-                  Confidence: {Math.round(currentAnswer.confidence * 100)}%
-                </span>
-                <div className="flex items-center space-x-2">
-                  <button className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded">
-                    Use
-                  </button>
-                  <button className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-700 rounded">
-                    Skip
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderCopilotMode = () => (
-    <div style={getOverlayStyle()}>
+    <div 
+      ref={overlayRef}
+      style={getOverlayStyle()}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-2">
-          <Zap className="w-4 h-4 text-purple-400" />
-          <span className="text-purple-400 font-bold">COPILOT</span>
+          <Mic className={`w-4 h-4 ${isListening ? 'text-green-400' : 'text-gray-400'}`} />
+          <span className="text-green-400 font-bold">INTERVIEW MODE</span>
         </div>
-        <button
-          onClick={() => setIsMinimized(!isMinimized)}
-          className="p-1 hover:bg-gray-700 rounded"
-        >
-          {isMinimized ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-        </button>
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => setIsListening(!isListening)}
+            className={`p-1 rounded ${isListening ? 'text-red-400' : 'text-gray-400'}`}
+          >
+            {isListening ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+          </button>
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="p-1 hover:bg-gray-700 rounded"
+          >
+            {isMinimized ? <Maximize2 className="w-3 h-3" /> : <Minimize2 className="w-3 h-3" />}
+          </button>
+          <button
+            onClick={toggleOverlayVisibility}
+            className="p-1 hover:bg-gray-700 rounded"
+          >
+            <Target className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
-      {!isMinimized && (
+      {/* Status Indicators */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="flex items-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.proctoring_bypass_status?.active_bypasses ? 'bg-green-400' : 'bg-red-400'}`} />
+          <span className="text-xs text-gray-300">Bypass</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.screen_monitoring ? 'bg-green-400' : 'bg-red-400'}`} />
+          <span className="text-xs text-gray-300">Monitor</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.audio_monitoring ? 'bg-green-400' : 'bg-red-400'}`} />
+          <span className="text-xs text-gray-300">Audio</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${answers.length > 0 ? 'bg-green-400' : 'bg-yellow-400'}`} />
+          <span className="text-xs text-gray-300">Queue</span>
+        </div>
+      </div>
+
+      {!isMinimized && currentAnswer && (
         <div>
           <div className="mb-2">
-            <div className="text-xs text-purple-400 mb-1">Active Monitoring:</div>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300">Email</span>
-                <CheckCircle className="w-3 h-3 text-green-400" />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300">Slack</span>
-                <CheckCircle className="w-3 h-3 text-green-400" />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300">Code</span>
-                <CheckCircle className="w-3 h-3 text-green-400" />
-              </div>
+            <div className="text-xs text-cyan-400 mb-1">Question Detected:</div>
+            <div className="text-xs text-gray-300 bg-gray-800 p-2 rounded">
+              {currentAnswer.question.substring(0, 100)}...
+            </div>
+          </div>
+          
+          <div className="mb-2">
+            <div className="text-xs text-green-400 mb-1">Answer:</div>
+            <div className="text-xs text-white bg-gray-800 p-2 rounded">
+              {typeof currentAnswer.answer === 'string' ? currentAnswer.answer : currentAnswer.answer.answer}
             </div>
           </div>
 
-          {currentAnswer && (
-            <div>
-              <div className="text-xs text-yellow-400 mb-1">Suggestion:</div>
-              <div className="text-xs text-white bg-gray-800 p-2 rounded">
-                {typeof currentAnswer.answer === 'string' ? currentAnswer.answer : currentAnswer.answer.answer}
-              </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400">
+              Confidence: {Math.round(currentAnswer.confidence * 100)}%
+            </span>
+            {currentAnswer.processing_time && (
+              <span className="text-gray-400">
+                {currentAnswer.processing_time.toFixed(2)}s
+              </span>
+            )}
+          </div>
+
+          {currentAnswer.model_used && (
+            <div className="text-xs text-gray-500 mt-1">
+              Model: {currentAnswer.model_used}
             </div>
           )}
         </div>
       )}
+
+      {/* Controls */}
+      <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-700">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => adjustOpacity(-0.1)}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            -
+          </button>
+          <span className="text-xs text-gray-400">{Math.round(opacity * 100)}%</span>
+          <button
+            onClick={() => adjustOpacity(0.1)}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            +
+          </button>
+        </div>
+        
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => moveOverlay('left')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            ←
+          </button>
+          <button
+            onClick={() => moveOverlay('up')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            ↑
+          </button>
+          <button
+            onClick={() => moveOverlay('down')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            ↓
+          </button>
+          <button
+            onClick={() => moveOverlay('right')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            →
+          </button>
+        </div>
+      </div>
     </div>
   );
 
-  if (!isActive || !isOverlayVisible) return null;
+  const renderPassiveCopilotMode = () => (
+    <div 
+      ref={overlayRef}
+      style={getOverlayStyle()}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center space-x-2">
+          <Brain className="w-4 h-4 text-blue-400" />
+          <span className="text-blue-400 font-bold">PASSIVE COPILOT</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="p-1 hover:bg-gray-700 rounded"
+          >
+            {isMinimized ? <Maximize2 className="w-3 h-3" /> : <Minimize2 className="w-3 h-3" />}
+          </button>
+          <button
+            onClick={toggleOverlayVisibility}
+            className="p-1 hover:bg-gray-700 rounded"
+          >
+            <Target className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {/* Status Indicators */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="flex items-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.proctoring_bypass_status?.active_bypasses ? 'bg-green-400' : 'bg-red-400'}`} />
+          <span className="text-xs text-gray-300">Bypass</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.screen_monitoring ? 'bg-green-400' : 'bg-red-400'}`} />
+          <span className="text-xs text-gray-300">Monitor</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${stealthStatus?.audio_monitoring ? 'bg-green-400' : 'bg-red-400'}`} />
+          <span className="text-xs text-gray-300">Audio</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className={`w-2 h-2 rounded-full ${answers.length > 0 ? 'bg-green-400' : 'bg-yellow-400'}`} />
+          <span className="text-xs text-gray-300">Queue</span>
+        </div>
+      </div>
+
+      {!isMinimized && currentAnswer && (
+        <div>
+          <div className="mb-2">
+            <div className="text-xs text-cyan-400 mb-1">Question Detected:</div>
+            <div className="text-xs text-gray-300 bg-gray-800 p-2 rounded">
+              {currentAnswer.question.substring(0, 100)}...
+            </div>
+          </div>
+          
+          <div className="mb-2">
+            <div className="text-xs text-green-400 mb-1">Answer:</div>
+            <div className="text-xs text-white bg-gray-800 p-2 rounded">
+              {typeof currentAnswer.answer === 'string' ? currentAnswer.answer : currentAnswer.answer.answer}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-400">
+              Confidence: {Math.round(currentAnswer.confidence * 100)}%
+            </span>
+            {currentAnswer.processing_time && (
+              <span className="text-gray-400">
+                {currentAnswer.processing_time.toFixed(2)}s
+              </span>
+            )}
+          </div>
+
+          {currentAnswer.model_used && (
+            <div className="text-xs text-gray-500 mt-1">
+              Model: {currentAnswer.model_used}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Controls */}
+      <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-700">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => adjustOpacity(-0.1)}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            -
+          </button>
+          <span className="text-xs text-gray-400">{Math.round(opacity * 100)}%</span>
+          <button
+            onClick={() => adjustOpacity(0.1)}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            +
+          </button>
+        </div>
+        
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => moveOverlay('left')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            ←
+          </button>
+          <button
+            onClick={() => moveOverlay('up')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            ↑
+          </button>
+          <button
+            onClick={() => moveOverlay('down')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            ↓
+          </button>
+          <button
+            onClick={() => moveOverlay('right')}
+            className="p-1 hover:bg-gray-700 rounded text-xs"
+          >
+            →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <AnimatePresence>
-      <motion.div
-        ref={overlayRef}
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }}
-        transition={{ duration: 0.2 }}
-      >
-        {mode === 'stealth-exam' && renderExamMode()}
-        {mode === 'stealth-interview' && renderInterviewMode()}
-        {mode === 'passive-copilot' && renderCopilotMode()}
-      </motion.div>
+      {isOverlayVisible && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            opacity: opacity,
+            zIndex: 9999,
+            pointerEvents: 'auto',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '8px',
+            padding: '12px',
+            maxWidth: '400px',
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            cursor: isDragging ? 'grabbing' : 'grab',
+            userSelect: 'none',
+            border: '1px solid rgba(0, 255, 255, 0.3)',
+            background: 'rgba(0, 0, 0, 0.8)',
+            transition: isDragging ? 'none' : 'all 0.3s ease'
+          }}
+        >
+          {mode === 'stealth-exam' && renderExamMode()}
+          {mode === 'stealth-interview' && renderInterviewMode()}
+          {mode === 'passive-copilot' && renderPassiveCopilotMode()}
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 };

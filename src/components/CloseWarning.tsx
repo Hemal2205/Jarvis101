@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X, Pause, Save, Clock, Brain, BookOpen } from 'lucide-react';
+import { useCloseWarning } from './CloseWarningUtils';
 
 interface CloseWarningProps {
   isVisible: boolean;
@@ -27,30 +28,7 @@ export const CloseWarning: React.FC<CloseWarningProps> = ({
   const [countdown, setCountdown] = useState(10);
   const [isCountingDown, setIsCountingDown] = useState(false);
 
-  useEffect(() => {
-    if (isVisible) {
-      // Play voice notification
-      notifyLearningInterruption();
-      setCountdown(10);
-      setIsCountingDown(false);
-    }
-  }, [isVisible]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (isCountingDown && countdown > 0) {
-      interval = setInterval(() => {
-        setCountdown(prev => prev - 1);
-      }, 1000);
-    } else if (isCountingDown && countdown === 0) {
-      handleSaveAndClose();
-    }
-    
-    return () => clearInterval(interval);
-  }, [isCountingDown, countdown]);
-
-  const notifyLearningInterruption = async () => {
+  const notifyLearningInterruption = useCallback(async () => {
     try {
       await fetch('/api/system/close-warning', {
         method: 'POST',
@@ -62,16 +40,39 @@ export const CloseWarning: React.FC<CloseWarningProps> = ({
     } catch (error) {
       console.error('Error notifying learning interruption:', error);
     }
-  };
+  }, [learningData]);
 
-  const handleSaveAndClose = async () => {
+  const handleSaveAndClose = useCallback(async () => {
     try {
       await onSave();
       onConfirmClose();
     } catch (error) {
       console.error('Error saving progress:', error);
     }
-  };
+  }, [onSave, onConfirmClose]);
+
+  useEffect(() => {
+    if (isVisible) {
+      // Play voice notification
+      notifyLearningInterruption();
+      setCountdown(10);
+      setIsCountingDown(false);
+    }
+  }, [isVisible, notifyLearningInterruption]);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    
+    if (isCountingDown && countdown > 0) {
+      interval = setInterval(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+    } else if (isCountingDown && countdown === 0) {
+      handleSaveAndClose();
+    }
+    
+    return () => clearInterval(interval);
+  }, [isCountingDown, countdown, handleSaveAndClose]);
 
   const handlePauseAndClose = async () => {
     try {
@@ -248,28 +249,7 @@ export const CloseWarning: React.FC<CloseWarningProps> = ({
   );
 };
 
-// Hook to manage close warning state
-export const useCloseWarning = () => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [learningData, setLearningData] = useState<any>(null);
-
-  const showWarning = (data?: any) => {
-    setLearningData(data);
-    setIsVisible(true);
-  };
-
-  const hideWarning = () => {
-    setIsVisible(false);
-    setLearningData(null);
-  };
-
-  return {
-    isVisible,
-    learningData,
-    showWarning,
-    hideWarning
-  };
-};
+// Moved useCloseWarning to CloseWarningUtils.ts
 
 // Component to handle window close/refresh events
 export const CloseWarningProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
